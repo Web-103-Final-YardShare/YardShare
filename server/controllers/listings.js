@@ -12,8 +12,7 @@ const getAllListings = async (req, res) => {
       SELECT 
         l.*, 
         u.username as seller_username, 
-        u.avatarurl as seller_avatar, 
-        c.name as category_name,
+        u.avatarurl as seller_avatar,
         /* Distance in KM if lat/lng provided */
         CASE 
           WHEN $1::numeric IS NULL OR $2::numeric IS NULL OR l.latitude IS NULL OR l.longitude IS NULL THEN NULL
@@ -25,6 +24,10 @@ const getAllListings = async (req, res) => {
             )
           )
         END AS distance_km,
+        /* Count unsold items */
+        COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
+        /* Array of unique category names from items */
+        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
         COALESCE(
           json_agg(
             json_build_object(
@@ -38,9 +41,11 @@ const getAllListings = async (req, res) => {
         ) AS photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN listing_photos p ON p.listing_id = l.id
-      WHERE (
+      LEFT JOIN items i ON i.listing_id = l.id
+      LEFT JOIN categories c ON i.category_id = c.id
+      WHERE l.is_active = true
+      AND (
         /* Text search */
         $4::text IS NULL OR 
         l.title ILIKE '%' || $4::text || '%' OR 
@@ -59,7 +64,7 @@ const getAllListings = async (req, res) => {
           ) <= $3::numeric
         )
       )
-      GROUP BY l.id, u.username, u.avatarurl, c.name
+      GROUP BY l.id, u.username, u.avatarurl
       ORDER BY 
         CASE WHEN $1::numeric IS NULL OR $2::numeric IS NULL THEN NULL ELSE 1 END,
         CASE WHEN $1::numeric IS NULL OR $2::numeric IS NULL THEN NULL ELSE (
@@ -73,6 +78,7 @@ const getAllListings = async (req, res) => {
     `, [lat, lng, radiusKm, q])
     res.status(200).json(results.rows)
   } catch (error) {
+    console.error('Error in getAllListings:', error)
     res.status(500).json({ error: error.message })
   }
 }
@@ -85,8 +91,11 @@ const getListing = async (req, res) => {
       SELECT 
         l.*, 
         u.username as seller_username, 
-        u.avatarurl as seller_avatar, 
-        c.name as category_name,
+        u.avatarurl as seller_avatar,
+        /* Count unsold items */
+        COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
+        /* Array of unique category names from items */
+        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
         COALESCE(
           json_agg(
             json_build_object(
@@ -100,10 +109,11 @@ const getListing = async (req, res) => {
         ) AS photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN listing_photos p ON p.listing_id = l.id
+      LEFT JOIN items i ON i.listing_id = l.id
+      LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.id = $1
-      GROUP BY l.id, u.username, u.avatarurl, c.name
+      GROUP BY l.id, u.username, u.avatarurl
     `, [id])
     
     if (results.rows.length === 0) {
@@ -112,6 +122,7 @@ const getListing = async (req, res) => {
     
     res.status(200).json(results.rows[0])
   } catch (error) {
+    console.error('Error in getListing:', error)
     res.status(500).json({ error: error.message })
   }
 }
@@ -119,22 +130,19 @@ const getListing = async (req, res) => {
 // POST new listing
 const createListing = async (req, res) => {
   try {
-    const { title, description, price, category_id, pickup_notes, location, latitude, longitude, image_url, photos, primaryIndex } = req.body
+    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex } = req.body
     const seller_id = req.user ? req.user.id : null
     
     if (!seller_id) {
       return res.status(401).json({ error: 'Must be logged in to create listing' })
     }
     
-    // VALIDATIO
+    // VALIDATION
     if (!title || title.trim().length === 0) {
       return res.status(400).json({ error: 'Title is required' })
     }
     if (title.trim().length > 255) {
       return res.status(400).json({ error: 'Title must be 255 characters or less' })
-    }
-    if (price && (isNaN(parseFloat(price)) || parseFloat(price) < 0)) {
-      return res.status(400).json({ error: 'Price must be a non-negative number' })
     }
     if (latitude && (isNaN(parseFloat(latitude)) || parseFloat(latitude) < -90 || parseFloat(latitude) > 90)) {
       return res.status(400).json({ error: 'Invalid latitude' })
@@ -144,10 +152,10 @@ const createListing = async (req, res) => {
     }
     
     const results = await pool.query(`
-      INSERT INTO listings (seller_id, category_id, title, description, price, pickup_notes, location, latitude, longitude, image_url, is_available)
+      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
       RETURNING *
-    `, [seller_id, category_id || null, title, description || '', price || 0, pickup_notes || '', location || '', latitude || null, longitude || null, image_url || ''])
+    `, [seller_id, title, description || '', sale_date || null, start_time || null, end_time || null, pickup_notes || '', location || '', latitude || null, longitude || null])
 
     const listing = results.rows[0]
 
@@ -161,9 +169,6 @@ const createListing = async (req, res) => {
           `INSERT INTO listing_photos (listing_id, url, is_primary, position) VALUES ($1, $2, $3, $4)`,
           [listing.id, url, isPrimary, i]
         )
-        if (isPrimary && !image_url) {
-          await pool.query('UPDATE listings SET image_url = $1 WHERE id = $2', [url, listing.id])
-        }
       }
     }
 
@@ -171,19 +176,13 @@ const createListing = async (req, res) => {
     const files = req.files || []
     if (files.length > 0) {
       const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
-      let primaryPhotoId = null
       for (let i = 0; i < files.length; i++) {
         const f = files[i]
         const isPrimary = i === primaryIdx
-        const ins = await pool.query(
+        await pool.query(
           `INSERT INTO listing_photos (listing_id, data, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
           [listing.id, f.buffer, f.mimetype, isPrimary, i]
         )
-        if (isPrimary) primaryPhotoId = ins.rows[0].id
-      }
-      if (primaryPhotoId && !image_url) {
-        const path = `/api/listings/${listing.id}/photos/${primaryPhotoId}`
-        await pool.query('UPDATE listings SET image_url = $1 WHERE id = $2', [path, listing.id])
       }
     }
 
@@ -205,6 +204,7 @@ const createListing = async (req, res) => {
     
     res.status(201).json(withPhotos.rows[0])
   } catch (error) {
+    console.error('Error in createListing:', error)
     res.status(409).json({ error: error.message })
   }
 }
@@ -213,7 +213,7 @@ const createListing = async (req, res) => {
 const updateListing = async (req, res) => {
   try {
     const id = parseInt(req.params.id)
-    const { title, description, price, category_id, pickup_notes, location, latitude, longitude, image_url, is_available, photos, primaryIndex } = req.body
+    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photos, primaryIndex } = req.body
     
     // Check ownership
     const ownerCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [id])
@@ -228,17 +228,17 @@ const updateListing = async (req, res) => {
       UPDATE listings
       SET title = COALESCE($1, title),
           description = COALESCE($2, description),
-          price = COALESCE($3, price),
-          category_id = COALESCE($4, category_id),
-          pickup_notes = COALESCE($5, pickup_notes),
-          location = COALESCE($6, location),
-          latitude = COALESCE($7, latitude),
-          longitude = COALESCE($8, longitude),
-          image_url = COALESCE($9, image_url),
-          is_available = COALESCE($10, is_available)
+          sale_date = COALESCE($3, sale_date),
+          start_time = COALESCE($4, start_time),
+          end_time = COALESCE($5, end_time),
+          pickup_notes = COALESCE($6, pickup_notes),
+          location = COALESCE($7, location),
+          latitude = COALESCE($8, latitude),
+          longitude = COALESCE($9, longitude),
+          is_active = COALESCE($10, is_active)
       WHERE id = $11
       RETURNING *
-    `, [title, description, price, category_id, pickup_notes, location, latitude, longitude, image_url, is_available, id])
+    `, [title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, id])
 
     const updated = results.rows[0]
 
@@ -247,7 +247,6 @@ const updateListing = async (req, res) => {
     if (Array.isArray(photos) || filesUpd.length > 0) {
       await pool.query('DELETE FROM listing_photos WHERE listing_id = $1', [id])
       const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
-      let primaryPhotoPath = null
       if (Array.isArray(photos)) {
         for (let i = 0; i < photos.length; i++) {
           const url = photos[i]
@@ -256,22 +255,17 @@ const updateListing = async (req, res) => {
             `INSERT INTO listing_photos (listing_id, url, is_primary, position) VALUES ($1, $2, $3, $4)`,
             [id, url, isPrimary, i]
           )
-          if (isPrimary) primaryPhotoPath = url
         }
       }
       if (filesUpd.length > 0) {
         for (let i = 0; i < filesUpd.length; i++) {
           const f = filesUpd[i]
           const isPrimary = i === primaryIdx
-          const ins = await pool.query(
+          await pool.query(
             `INSERT INTO listing_photos (listing_id, data, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
             [id, f.buffer, f.mimetype, isPrimary, i]
           )
-          if (isPrimary) primaryPhotoPath = `/api/listings/${id}/photos/${ins.rows[0].id}`
         }
-      }
-      if (primaryPhotoPath) {
-        await pool.query('UPDATE listings SET image_url = $1 WHERE id = $2', [primaryPhotoPath, id])
       }
     }
 
@@ -297,6 +291,7 @@ const updateListing = async (req, res) => {
 
     res.status(200).json(withPhotos.rows[0])
   } catch (error) {
+    console.error('Error in updateListing:', error)
     res.status(409).json({ error: error.message })
   }
 }
@@ -322,6 +317,7 @@ const deleteListing = async (req, res) => {
     
     res.status(200).json({ message: 'Listing deleted successfully' })
   } catch (error) {
+    console.error('Error in deleteListing:', error)
     res.status(500).json({ error: error.message })
   }
 }
@@ -337,7 +333,8 @@ const getSellerListings = async (req, res) => {
     const results = await pool.query(`
       SELECT 
         l.*, 
-        c.name as category_name,
+        COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
+        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
         COALESCE(
           json_agg(
             json_build_object(
@@ -350,15 +347,17 @@ const getSellerListings = async (req, res) => {
           ) FILTER (WHERE p.id IS NOT NULL), '[]'
         ) AS photos
       FROM listings l
-      LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN listing_photos p ON p.listing_id = l.id
+      LEFT JOIN items i ON i.listing_id = l.id
+      LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.seller_id = $1
-      GROUP BY l.id, c.name
+      GROUP BY l.id
       ORDER BY l.created_at DESC
     `, [seller_id])
     
     res.status(200).json(results.rows)
   } catch (error) {
+    console.error('Error in getSellerListings:', error)
     res.status(500).json({ error: error.message })
   }
 }
@@ -399,7 +398,7 @@ const getNearbyCount = async (req, res) => {
       FROM listings l
       WHERE l.latitude IS NOT NULL 
         AND l.longitude IS NOT NULL 
-        AND l.is_available = true
+        AND l.is_active = true
         AND (
           6371 * acos(
             cos(radians($1::numeric)) * cos(radians(l.latitude)) *

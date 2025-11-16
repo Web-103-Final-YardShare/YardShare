@@ -6,6 +6,7 @@ const dropTables = async () => {
     console.log('🗑️  Dropping tables...')
     await pool.query('DROP TABLE IF EXISTS listing_photos CASCADE')
     await pool.query('DROP TABLE IF EXISTS favorites CASCADE')
+    await pool.query('DROP TABLE IF EXISTS items CASCADE') // Add this
     await pool.query('DROP TABLE IF EXISTS listings CASCADE')
     await pool.query('DROP TABLE IF EXISTS categories CASCADE')
     await pool.query('DROP TABLE IF EXISTS user_profiles CASCADE')
@@ -52,26 +53,49 @@ const createTables = async () => {
       )
     `)
     
-    // Listings table 
+    // Listings table (yard sales)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS listings (
         id SERIAL PRIMARY KEY,
         seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
         title VARCHAR(255) NOT NULL,
         description TEXT,
-        price DECIMAL(10, 2) DEFAULT 0,
-        is_available BOOLEAN DEFAULT true,
+        sale_date DATE,
+        start_time TIME,
+        end_time TIME,
+        is_active BOOLEAN DEFAULT true,
         pickup_notes TEXT,
         location VARCHAR(255),
         latitude DOUBLE PRECISION,
         longitude DOUBLE PRECISION,
-        image_url VARCHAR(500),
         created_at TIMESTAMP DEFAULT NOW()
       )
     `)
 
-    // Listing photos table 
+    // Items table (individual items in yard sales)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS items (
+        id SERIAL PRIMARY KEY,
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        price DECIMAL(10, 2) NOT NULL,
+        condition VARCHAR(20) NOT NULL CHECK (condition IN ('excellent', 'good', 'fair', 'poor')),
+        image_url VARCHAR(500),
+        sold BOOLEAN DEFAULT FALSE,
+        display_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_items_listing_id ON items(listing_id)
+    `)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_items_category_id ON items(category_id)
+    `)
+
+    // Listing photos table (for the yard sale itself, not individual items)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS listing_photos (
         id SERIAL PRIMARY KEY,
@@ -90,13 +114,23 @@ const createTables = async () => {
       WHERE is_primary
     `)
     
-    // Favorites table 
+    // Favorites table (for favoriting yard sales)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS favorites (
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
         favorited_at TIMESTAMP DEFAULT NOW(),
         PRIMARY KEY (user_id, listing_id)
+      )
+    `)
+    
+    // Item favorites table (for favoriting individual items)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS item_favorites (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        favorited_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (user_id, item_id)
       )
     `)
     
@@ -147,7 +181,6 @@ const seedTestData = async () => {
     `)
     
     if (userResult.rows.length === 0) {
-      // User already exists, fetch it
       const existingUser = await pool.query('SELECT id FROM users WHERE username = $1', ['testuser'])
       if (existingUser.rows.length === 0) {
         console.log('⚠️  Could not create or find test user')
@@ -159,68 +192,127 @@ const seedTestData = async () => {
     }
     
     // Get category IDs
-    const furnitureResult = await pool.query('SELECT id FROM categories WHERE name = $1', ['Furniture'])
-    const electronicsResult = await pool.query('SELECT id FROM categories WHERE name = $1', ['Electronics'])
+    const categories = await pool.query('SELECT id, name FROM categories')
+    const categoryMap = {}
+    categories.rows.forEach(cat => {
+      categoryMap[cat.name] = cat.id
+    })
     
-    const furnitureId = furnitureResult.rows[0]?.id
-    const electronicsId = electronicsResult.rows[0]?.id
-    
-    // Create Orlando-based test listings (with coordinates)
-    const listings = [
+    // Create Orlando-based yard sales
+    const listing1 = await pool.query(`
+      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
+      VALUES ($1, $2, $3, CURRENT_DATE, '08:00', '13:00', $4, $5, $6, $7, true)
+      RETURNING id
+    `, [
+      userId,
+      'Moving Sale at 543 Oak Street',
+      'Moving sale! High quality furniture, vintage books, gaming consoles and more. Everything must go!',
+      'Loading help available. Cash preferred.',
+      '543 Oak Street, Orlando, FL 32801',
+      28.5402,
+      -81.3816
+    ])
+    const listingId1 = listing1.rows[0].id
+
+    const listing2 = await pool.query(`
+      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
+      VALUES ($1, $2, $3, CURRENT_DATE + 1, '09:00', '15:00', $4, $5, $6, $7, true)
+      RETURNING id
+    `, [
+      userId,
+      'Multi-Family Garage Sale',
+      'Tons of great stuff from multiple families. Books, toys, clothes, and household items.',
+      'Bring your own bags. Early birds welcome!',
+      '789 Maple Avenue, Orlando, FL 32803',
+      28.5433,
+      -81.3462
+    ])
+    const listingId2 = listing2.rows[0].id
+
+    // Add items to listing 1 (543 Oak Street)
+    const listing1Items = [
       {
-        title: 'Downtown Yard Sale - Furniture',
-        description: 'Moving sale! Sofa, end tables, and lamps in good condition.',
-        price: 120.00,
-        category_id: furnitureId,
-        pickup_notes: 'Loading help available. Cash preferred.',
-        location: '200 S Orange Ave, Orlando, FL 32801',
-        latitude: 28.5402,
-        longitude: -81.3816,
-        image_url: 'https://placehold.co/600x400?text=Furniture+Sale'
+        title: 'Mid century dresser',
+        description: 'Beautiful walnut dresser from the 1960s in excellent condition. Six spacious drawers with original hardware.',
+        price: 75.00,
+        condition: 'excellent',
+        category_id: categoryMap['Furniture'],
+        image_url: 'https://placehold.co/400x400?text=Dresser'
       },
       {
-        title: 'Lake Eola Electronics',
-        description: 'Selling keyboards, monitors, and small gadgets. All tested.',
-        price: 85.00,
-        category_id: electronicsId,
-        pickup_notes: 'Text on arrival. Street parking nearby.',
-        location: '400 E Central Blvd, Orlando, FL 32801',
-        latitude: 28.5436,
-        longitude: -81.3733,
-        image_url: 'https://placehold.co/600x400?text=Electronics'
+        title: 'PlayStation 4 Bundle',
+        description: 'PS4 with 2 controllers and 5 games. Everything works great! Includes all cables and original box.',
+        price: 100.00,
+        condition: 'good',
+        category_id: categoryMap['Electronics'],
+        image_url: 'https://placehold.co/400x400?text=PS4'
       },
       {
-        title: 'Metrowest Multi-family Sale',
-        description: 'Tools, sports gear, kids toys, and books. Priced to move!',
-        price: 0,
-        category_id: furnitureId,
-        pickup_notes: 'Please bring small bills. First-come, first-served.',
-        location: '2415 S Hiawassee Rd, Orlando, FL 32835',
-        latitude: 28.5108,
-        longitude: -81.4767,
-        image_url: 'https://placehold.co/600x400?text=Yard+Sale'
+        title: 'Vintage Book Collection',
+        description: 'Set of 12 vintage hardcover books, first editions from the 1950s-60s.',
+        price: 45.00,
+        condition: 'excellent',
+        category_id: categoryMap['Books'],
+        image_url: 'https://placehold.co/400x400?text=Books'
       },
       {
-        title: 'Milk District Porch Pickup',
-        description: 'Kitchen items and decor. Gently used, smoke-free home.',
-        price: 25.00,
-        category_id: furnitureId,
-        pickup_notes: 'Porch pickup only. Message for bundle deals.',
-        location: '2432 E Robinson St, Orlando, FL 32803',
-        latitude: 28.5433,
-        longitude: -81.3462,
-        image_url: 'https://placehold.co/600x400?text=Home+%26+Kitchen'
+        title: 'Coffee Table',
+        description: 'Modern glass coffee table with wooden legs. Minor scratches but structurally sound.',
+        price: 35.00,
+        condition: 'good',
+        category_id: categoryMap['Furniture'],
+        image_url: 'https://placehold.co/400x400?text=Table'
       }
     ]
 
-    for (const l of listings) {
+    for (let i = 0; i < listing1Items.length; i++) {
+      const item = listing1Items[i]
       await pool.query(`
-        INSERT INTO listings (seller_id, category_id, title, description, price, pickup_notes, location, latitude, longitude, image_url, is_available)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
-      `, [userId, l.category_id, l.title, l.description, l.price, l.pickup_notes, l.location, l.latitude, l.longitude, l.image_url])
+        INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [listingId1, item.category_id, item.title, item.description, item.price, item.condition, item.image_url, i])
+    }
+
+    // Add items to listing 2 (789 Maple Avenue)
+    const listing2Items = [
+      {
+        title: 'Kids Bicycle',
+        description: 'Red 16" bike with training wheels. Great condition, just outgrown.',
+        price: 30.00,
+        condition: 'good',
+        category_id: categoryMap['Toys & Games'],
+        image_url: 'https://placehold.co/400x400?text=Bike'
+      },
+      {
+        title: 'Kitchen Mixer',
+        description: 'Stand mixer with multiple attachments. Works perfectly.',
+        price: 40.00,
+        condition: 'excellent',
+        category_id: categoryMap['Kitchen'],
+        image_url: 'https://placehold.co/400x400?text=Mixer'
+      },
+      {
+        title: 'Garden Tools Set',
+        description: 'Complete set of garden tools including rake, shovel, and pruners.',
+        price: 25.00,
+        condition: 'fair',
+        category_id: categoryMap['Tools'],
+        image_url: 'https://placehold.co/400x400?text=Tools'
+      }
+    ]
+
+    for (let i = 0; i < listing2Items.length; i++) {
+      const item = listing2Items[i]
+      await pool.query(`
+        INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [listingId2, item.category_id, item.title, item.description, item.price, item.condition, item.image_url, i])
     }
     
     console.log('✅ Test data seeded')
+    console.log(`   - Created 2 yard sales`)
+    console.log(`   - Added ${listing1Items.length} items to listing 1`)
+    console.log(`   - Added ${listing2Items.length} items to listing 2`)
   } catch (error) {
     console.error('❌ Error seeding test data:', error.message)
   }

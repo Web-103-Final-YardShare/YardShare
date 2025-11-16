@@ -12,6 +12,9 @@ const authRoutes = require('./routes/auth')
 const listingsRoutes = require('./routes/listings')
 const categoriesRoutes = require('./routes/categories')
 const favoritesRoutes = require('./routes/favorites')
+const itemsRoutes = require('./routes/items')
+
+
 
 const app = express()
 
@@ -52,7 +55,7 @@ app.use('/auth', authRoutes)
 app.use('/api/listings', listingsRoutes)
 app.use('/api/categories', categoriesRoutes)
 app.use('/api/favorites', favoritesRoutes)
-
+app.use('/api/items', itemsRoutes)
 app.get('/', (req, res) => {
   res.json({ message: 'YardShare API running', user: req.user || null })
 })

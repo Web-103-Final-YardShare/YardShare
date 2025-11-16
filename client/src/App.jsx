@@ -84,6 +84,7 @@ export default function App() {
       }
     } else {
       // Optimistic add
+      setFavorites(prev => (prev.includes(saleId) ? prev : [...prev, saleId]));
       try {
         const res = await fetch(`${API_URL}/api/favorites/${saleId}`, {
           method: 'POST',

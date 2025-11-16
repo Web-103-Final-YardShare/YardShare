@@ -100,10 +100,10 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated }) {
               alert('Please login to save favorites');
             }
           }}
-          className={`absolute top-2 right-2 text-red-500 bg-white/90 rounded-full p-2 shadow ${!isAuthenticated ? 'opacity-50' : ''}`}
+          className={`absolute top-2 right-2 bg-white/90 rounded-full p-2 shadow ${!isAuthenticated ? 'opacity-50' : ''}`}
           title={!isAuthenticated ? 'Login to save favorites' : isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
-          <Heart className={`size-5 ${isFavorite ? 'fill-current' : ''}`} />
+          <Heart className={`size-5 ${isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-500'}`} />
         </button>
       </div>
 

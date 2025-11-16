@@ -7,17 +7,16 @@ const getUserFavorites = async (req, res) => {
     if (!user_id) {
       return res.status(401).json({ error: 'Must be logged in' })
     }
-    
+
     const results = await pool.query(`
-      SELECT l.*, u.username as seller_username, c.name as category_name, f.favorited_at
+      SELECT l.*, u.username as seller_username, f.favorited_at
       FROM favorites f
       JOIN listings l ON f.listing_id = l.id
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN categories c ON l.category_id = c.id
       WHERE f.user_id = $1
       ORDER BY f.favorited_at DESC
     `, [user_id])
-    
+
     res.status(200).json(results.rows)
   } catch (error) {
     res.status(500).json({ error: error.message })
