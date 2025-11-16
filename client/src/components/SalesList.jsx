@@ -109,6 +109,18 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated }) {
 
       <div className="p-4">
         <h3 className="text-gray-900 mb-1 font-semibold line-clamp-1">{listing.title || listing.location || 'Yard Sale'}</h3>
+        <div className="flex items-center gap-2 mb-2">
+          {listing.seller_avatar ? (
+            <img
+              src={listing.seller_avatar.startsWith('/') ? `${API_BASE}${listing.seller_avatar}` : listing.seller_avatar}
+              alt={listing.seller_username || 'Seller'}
+              className="w-6 h-6 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-gray-200" />
+          )}
+          <span className="text-xs text-gray-600">{listing.seller_username || 'Seller'}</span>
+        </div>
         <p className="text-sm text-gray-600 line-clamp-2 mb-2">{listing.description}</p>
         <div className="flex items-center justify-between text-sm text-gray-600">
           <div className="flex items-center gap-1">

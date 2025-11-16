@@ -22,6 +22,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'codepath'
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
+const isProduction = process.env.NODE_ENV === 'production'
+app.set('trust proxy', isProduction ? 1 : 0)
 app.use(cors({
 	origin: CLIENT_URL,
 	methods: 'GET,POST,PUT,DELETE,PATCH',
@@ -34,8 +36,8 @@ app.use(session({
 	saveUninitialized: true,
 	cookie: {
 		httpOnly: true,
-		sameSite: 'lax',
-		secure: false,
+		sameSite: isProduction ? 'none' : 'lax',
+		secure: isProduction,
 	},
 }))
 
