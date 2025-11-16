@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Layout } from './Layout'
 import { LocationPicker } from './LocationPicker'
@@ -6,6 +7,7 @@ import { LocationPicker } from './LocationPicker'
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout }) {
+  const navigate = useNavigate();
   const [categories, setCategories] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -104,9 +106,8 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
       if (!res.ok) throw new Error(data?.error || 'Failed to create')
       setSuccess('Listing created!')
       toast.success('Listing created successfully!')
-      // Reset minimal
-      setForm({ title: '', description: '', price: '', category_id: '', pickup_notes: '', location: '', latitude: null, longitude: null, photos: [''], primaryIndex: 0 })
-      setFiles([])
+      // Redirect to home after short delay
+      setTimeout(() => navigate('/'), 500)
     } catch (e) {
       setError(e.message)
       toast.error(e.message || 'Failed to create listing')
