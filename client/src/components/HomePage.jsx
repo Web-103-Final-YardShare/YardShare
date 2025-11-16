@@ -12,6 +12,7 @@ export function HomePage({ isAuthenticated, user, favorites, toggleFavorite, onL
     distance: 10,
     status: 'all'
   });
+  const [location, setLocation] = useState({ name: 'Orlando, FL', lat: 28.5383, lng: -81.3792 });
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -22,18 +23,21 @@ export function HomePage({ isAuthenticated, user, favorites, toggleFavorite, onL
         user={user}
         favoritesCount={favorites.length}
         onLogout={onLogout}
+        location={location}
+        setLocation={setLocation}
       />
       
       <div className="flex h-[calc(100vh-80px)]">
         <SalesList 
           searchQuery={searchQuery}
-          filters={filters}
           onFilterClick={() => setShowFilters(true)}
           favorites={favorites}
           toggleFavorite={toggleFavorite}
           isAuthenticated={isAuthenticated}
+          location={location}
+          distanceMiles={filters.distance}
         />
-        <MapView />
+        <MapView location={location} searchQuery={searchQuery} radiusMiles={filters.distance} />
       </div>
 
       <FilterDialog 

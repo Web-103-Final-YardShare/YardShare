@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import { HomePage } from './components/HomePage';
 import { AuthPage } from './components/AuthPage';
 import { SavedPage } from './components/SavedPage';
@@ -28,22 +29,39 @@ export default function App() {
 
       if (response.ok) {
         const userData = await response.json();
-        setIsAuthenticated(true);
-        setUser({
-          username: userData.user.username,
-          avatar_url: userData.user.avatarurl
-        });
-
+        if (userData && userData.user) {
+          setIsAuthenticated(true);
+          setUser({
+            username: userData.user.username,
+            avatar_url: userData.user.avatarurl
+          });
+          // Load initial favorites for the authenticated user
+          try {
+            const favRes = await fetch(`${API_URL}/api/favorites`, { credentials: 'include' });
+            if (favRes.ok) {
+              const favData = await favRes.json();
+              setFavorites(Array.isArray(favData) ? favData.map(l => l.id) : []);
+            } else {
+              setFavorites([]);
+            }
+          } catch {
+            setFavorites([]);
+          }
+        } else {
+          setIsAuthenticated(false);
+          setUser(null);
+        }
       }
     } catch (error) {
-
-      console.log('Backend not available - running in frontend-only mode', error);
+      console.error('Auth check failed:', error);
+      setIsAuthenticated(false);
+      setUser(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // Toggle favorite - only works when authenticated
+  // Toggle favorite - persist to backend
   const toggleFavorite = async (saleId) => {
     if (!isAuthenticated) {
       alert('Please login to save favorites!');
@@ -51,20 +69,39 @@ export default function App() {
     }
 
     const isFavorited = favorites.includes(saleId);
-    
     if (isFavorited) {
+      // Optimistic remove
       setFavorites(prev => prev.filter(id => id !== saleId));
+      try {
+        const res = await fetch(`${API_URL}/api/favorites/${saleId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        if (!res.ok) throw new Error('Failed to remove favorite');
+      } catch {
+        // Revert on failure
+        setFavorites(prev => (prev.includes(saleId) ? prev : [...prev, saleId]));
+      }
     } else {
-      setFavorites(prev => [...prev, saleId]);
+      // Optimistic add
+      try {
+        const res = await fetch(`${API_URL}/api/favorites/${saleId}`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (!res.ok) throw new Error('Failed to add favorite');
+      } catch {
+        // Revert on failure
+        setFavorites(prev => prev.filter(id => id !== saleId));
+      }
     }
-
   };
 
   // When user logs out
   const handleLogout = async () => {
     try {
       await fetch(`${API_URL}/auth/logout`, {
-        method: 'POST',
+        method: 'GET',
         credentials: 'include'
       });
     } catch (error) {
@@ -75,6 +112,7 @@ export default function App() {
     setUser(null);
     setFavorites([]);
   };
+  
 
   // Show loading state while checking auth
   if (loading) {
@@ -90,6 +128,7 @@ export default function App() {
 
   return (
     <Router>
+      <Toaster position="top-right" />
       <Routes>
         <Route 
           path="/" 

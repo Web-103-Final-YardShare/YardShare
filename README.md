@@ -15,7 +15,9 @@ YardShare is a neighborhood-first marketplace that makes hosting, finding, and c
 ### Inspiration
 
 We were inspired by community yard sales, local buy/sell groups, and the sustainability benefits of reusing items instead of buying new. YardShare aims to make it easy for people to list items quickly, reach local buyers, and coordinate pickups.
+
 ## Tech Stack
+
 Design: Figma
 Frontend: React (Create React App or Vite), Tailwind CSS or plain CSS, React Router
 
@@ -26,33 +28,42 @@ Optional: Cloud storage for photos (e.g., Cloudinary or AWS S3), Map API (Mapbox
 ## Features
 
 ### User Authentication
+
 Create an account and sign in using email/password. Registered users can create, edit, and remove listings and message other users.
 
 ### Create / Edit / Delete Listings
+
 Sellers can create listings with title, description, price (optional), multiple photos, category, and pickup details (address or general location). They can edit or remove listings at any time.
 
 ### Search & Filter Listings
+
 Search by keyword and filter by category, price range, and distance from the user's location to quickly find relevant items.
 
 ### Map View & Location Pins
+
 A map view displays nearby listings with pins and basic info; clicking a pin reveals the listing details and directions.
 
 ### In-app Messaging
+
 Buyers can message sellers through a simple in-app messaging feature to ask questions and coordinate pickup times.
 
 ### Favorites / Saved Listings
+
 Users can bookmark listings to a Favorites list for later review.
 
 ### Photo Uploads
+
 Listings support multiple photos so buyers can see item condition and details.
 
 ### Scheduling / Pickup Notes (Custom)
+
 Allow sellers to add available pickup windows and notes (e.g., curbside pickup, porch pickup), helping buyers coordinate easily.
 
 ### Neighborhood Feed & Events (Custom)
+
 A chronological feed highlights new listings, upcoming neighborhood sale events, or group announcements to encourage local participation.
 
-_(When features are implemented, add GIFs demonstrating each feature in this section.)_
+When features are implemented, add GIFs demonstrating each feature in this section.
 
 ## Installation Instructions
 

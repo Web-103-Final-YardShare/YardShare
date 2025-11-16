@@ -1,13 +1,76 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Search, Heart, Plus, User, LogOut } from 'lucide-react';
 import { Button } from './Button';
 
-export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, favoritesCount, onLogout }) {
+export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, favoritesCount, onLogout, location, setLocation }) {
   const navigate = useNavigate();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
-  const [location, setLocation] = useState('Orlando, FL');
+  const [inputLocation, setInputLocation] = useState(location?.name || 'Orlando, FL');
+  const [suggestions, setSuggestions] = useState([]);
+  const [loadingSuggest, setLoadingSuggest] = useState(false);
+  const abortRef = useRef(null);
+
+  const handleUpdateLocation = async () => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(inputLocation)}&limit=1&countrycodes=us`, {
+        headers: { 'User-Agent': 'YardShareWeb103/1.0' }
+      });
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const { lat, lon, display_name } = data[0];
+        setLocation({ name: display_name, lat: parseFloat(lat), lng: parseFloat(lon) });
+        setShowLocationModal(false);
+      } else {
+        alert('Location not found. Try a different query.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to geocode location');
+    }
+  };
+
+  // Autocomplete suggestions for US locations (city, zip, addresses)
+  useEffect(() => {
+    if (!showLocationModal) return;
+    const q = inputLocation?.trim();
+    if (!q) {
+      setSuggestions([]);
+      return;
+    }
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const run = async () => {
+      try {
+        setLoadingSuggest(true);
+        const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=us&q=${encodeURIComponent(q)}`;
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'YardShareWeb103/1.0', 'Accept-Language': 'en-US' },
+          signal: controller.signal
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setSuggestions(data || []);
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('suggestions failed', e);
+      } finally {
+        setLoadingSuggest(false);
+      }
+    };
+    const t = setTimeout(run, 250);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [inputLocation, showLocationModal]);
+
+  const pickSuggestion = (s) => {
+    const name = s.display_name;
+    const lat = parseFloat(s.lat);
+    const lng = parseFloat(s.lon);
+    setLocation({ name, lat, lng });
+    setInputLocation(name);
+    setShowLocationModal(false);
+  };
 
   return (
     <header className="bg-emerald-600 text-white px-6 py-4">
@@ -23,7 +86,7 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
           className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 h-10 px-4 rounded-full transition-colors"
         >
           <MapPin className="size-5" />
-          <span>{location}</span>
+          <span>{location?.name || 'Orlando, FL'}</span>
         </button>
 
         {showLocationModal && (
@@ -33,14 +96,33 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
               onClick={() => setShowLocationModal(false)}
             ></div>
             <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-96 z-50 shadow-xl">
-              <h3 className="text-gray-900 mb-4 font-semibold">Change Location</h3>
-              <input 
-                type="text"
-                placeholder="Enter city, state or zip"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-4"
-              />
+              <h3 className="text-gray-900 mb-4 font-semibold">Set Community</h3>
+              <div className="relative mb-4">
+                <input 
+                  type="text"
+                  placeholder="Enter community, city, or ZIP"
+                  value={inputLocation}
+                  onChange={(e) => setInputLocation(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {/* Suggestions dropdown */}
+                {(suggestions.length > 0 || loadingSuggest) && (
+                  <div className="absolute left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg max-h-64 overflow-auto shadow-lg z-10">
+                    {loadingSuggest && (
+                      <div className="px-4 py-2 text-sm text-gray-500">Searching…</div>
+                    )}
+                    {suggestions.map((s) => (
+                      <button
+                        key={`${s.place_id}`}
+                        onClick={() => pickSuggestion(s)}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
+                      >
+                        {s.display_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-2">
                 <Button 
                   variant="secondary"
@@ -51,7 +133,7 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
                 </Button>
                 <Button 
                   variant="primary"
-                  onClick={() => setShowLocationModal(false)}
+                  onClick={handleUpdateLocation}
                   className="flex-1"
                 >
                   Update
@@ -62,15 +144,15 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
         )}
 
         {/* Search */}
-        <div className="flex-1 max-w-md">
+        <div className="flex-1 max-w-xl">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search yard sales..."
+              placeholder="Search sales, items, or keywords"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-10 pr-4 rounded-full text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+              className="w-full h-12 pl-12 pr-4 rounded-full text-gray-900 placeholder:text-gray-500 bg-white/90 shadow-sm focus:outline-none focus:ring-4 focus:ring-emerald-300/40"
             />
           </div>
         </div>
@@ -136,12 +218,16 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
                 <>
                   {/* Backdrop to close menu */}
                   <div 
-                    className="fixed inset-0 z-10" 
+                    className="fixed inset-0" 
+                    style={{ zIndex: 1500 }}
                     onClick={() => setShowUserMenu(false)}
                   ></div>
                   
                   {/* Dropdown */}
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-20">
+                  <div 
+                    className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2"
+                    style={{ zIndex: 2000 }}
+                  >
                     <button
                       onClick={() => {
                         navigate('/profile');

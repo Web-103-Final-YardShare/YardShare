@@ -1,24 +1,41 @@
-import { mockSales } from '../data/mockData';
-import { Badge } from './Badge';
-import { Clock, MapPin, Heart, Package, Filter } from 'lucide-react';
+import { useEffect, useState, useMemo } from 'react';
+import { MapPin, Heart, Filter, DollarSign } from 'lucide-react';
+import { LoadingSpinner } from './LoadingSpinner';
 
-export function SalesList({ searchQuery, filters, onFilterClick, favorites, toggleFavorite, isAuthenticated }) {
-  // Filter sales based on search and filters
-  const filteredSales = mockSales.filter(sale => {
-    const matchesSearch = searchQuery === '' || 
-      sale.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sale.categories.some(cat => cat.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesStatus = filters.status === 'all' || sale.status === filters.status;
-    const matchesDistance = sale.distance <= filters.distance;
-    const matchesCategories = filters.categories.length === 0 ||
-      filters.categories.some(cat => sale.categories.includes(cat));
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-    return matchesSearch && matchesStatus && matchesDistance && matchesCategories;
-  });
+export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorite, isAuthenticated, location, distanceMiles = 10 }) {
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState([]);
+  const radiusKm = useMemo(() => Math.max(1, Math.round(distanceMiles * 1.60934)), [distanceMiles]);
 
-  const happeningNow = filteredSales.filter(sale => sale.status === 'happening');
-  const upcoming = filteredSales.filter(sale => sale.status === 'upcoming');
+  useEffect(() => {
+    const controller = new AbortController();
+    const fetchListings = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (searchQuery) params.set('q', searchQuery);
+        if (location?.lat && location?.lng) {
+          params.set('lat', String(location.lat));
+          params.set('lng', String(location.lng));
+          params.set('radius_km', String(radiusKm));
+        }
+        const url = `${API_BASE}/api/listings${params.toString() ? `?${params.toString()}` : ''}`;
+        const res = await fetch(url, { credentials: 'include', signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json();
+          setItems(data);
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Failed to load listings', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchListings();
+    return () => controller.abort();
+  }, [searchQuery, location?.lat, location?.lng, radiusKm]);
 
   return (
     <div className="w-96 bg-white border-r border-gray-200 overflow-y-auto">
@@ -33,120 +50,81 @@ export function SalesList({ searchQuery, filters, onFilterClick, favorites, togg
             <span>Filter</span>
           </button>
         </div>
-        <p className="text-gray-600">
-          There are <span className="text-emerald-600">{filteredSales.length}</span> sales happening
-        </p>
+        <p className="text-gray-600">{loading ? 'Loading…' : <>Showing <span className="text-emerald-600">{items.length}</span> within {distanceMiles} mi</>}</p>
       </div>
 
       <div className="p-4 space-y-4">
-        {happeningNow.length > 0 && (
-          <div>
-            {happeningNow.map(sale => (
-              <SaleCard 
-                key={sale.id}
-                sale={sale}
-                isFavorite={favorites.includes(sale.id)}
-                onToggleFavorite={toggleFavorite}
-                isAuthenticated={isAuthenticated}
-              />
-            ))}
+        {loading && (
+          <div className="py-12">
+            <LoadingSpinner text="Loading listings..." />
           </div>
         )}
-
-        {upcoming.length > 0 && (
-          <div>
-            {upcoming.map(sale => (
-              <SaleCard 
-                key={sale.id}
-                sale={sale}
-                isFavorite={favorites.includes(sale.id)}
-                onToggleFavorite={toggleFavorite}
-                isAuthenticated={isAuthenticated}
-              />
-            ))}
-          </div>
-        )}
-
-        {filteredSales.length === 0 && (
+        {!loading && items.length === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500">No sales found matching your criteria</p>
           </div>
         )}
+        {!loading && items.map(l => (
+          <SaleCard 
+            key={l.id}
+            listing={l}
+            isFavorite={favorites.includes(l.id)}
+            onToggleFavorite={toggleFavorite}
+            isAuthenticated={isAuthenticated}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-function SaleCard({ sale, isFavorite, onToggleFavorite, isAuthenticated }) {
+function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated }) {
+  const photoUrl = useMemo(() => {
+    if (listing.image_url && listing.image_url.startsWith('/')) return `${API_BASE}${listing.image_url}`;
+    return listing.image_url || 'https://via.placeholder.com/400x300?text=Yard+Sale';
+  }, [listing.image_url]);
+
+  const distanceMi = useMemo(() => {
+    return typeof listing.distance_km === 'number' ? Math.round(listing.distance_km * 0.621371) : null;
+  }, [listing.distance_km]);
+
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden mb-4 hover:shadow-md transition-shadow">
-      {/* Status Badge */}
-      <Badge status={sale.status}>
-        {sale.status === 'happening' ? 'Happening Now' : 'Upcoming'}
-      </Badge>
+    <div className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
+      <div className="relative">
+        <img src={photoUrl} alt={listing.title} className="w-full h-40 object-cover" />
+        <button 
+          onClick={() => {
+            if (isAuthenticated) {
+              onToggleFavorite(listing.id);
+            } else {
+              alert('Please login to save favorites');
+            }
+          }}
+          className={`absolute top-2 right-2 text-red-500 bg-white/90 rounded-full p-2 shadow ${!isAuthenticated ? 'opacity-50' : ''}`}
+          title={!isAuthenticated ? 'Login to save favorites' : isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Heart className={`size-5 ${isFavorite ? 'fill-current' : ''}`} />
+        </button>
+      </div>
 
       <div className="p-4">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="text-gray-900 mb-2">{sale.address}</h3>
-            <div className="flex items-center gap-3 text-gray-600 text-sm">
-              <div className="flex items-center gap-1">
-                <MapPin className="size-4" />
-                <span>{sale.distance} mi</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="size-4" />
-                <span>{sale.time}</span>
-              </div>
-            </div>
+        <h3 className="text-gray-900 mb-1 font-semibold line-clamp-1">{listing.title || listing.location || 'Yard Sale'}</h3>
+        <p className="text-sm text-gray-600 line-clamp-2 mb-2">{listing.description}</p>
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <div className="flex items-center gap-1">
+            <MapPin className="size-4" />
+            <span className="line-clamp-1">{listing.location || 'No location'}</span>
           </div>
-          <button 
-            onClick={() => {
-              if (isAuthenticated) {
-                onToggleFavorite(sale.id);
-              } else {
-                alert('Please login to save favorites');
-              }
-            }}
-            className={`text-red-500 hover:scale-110 transition-transform ${!isAuthenticated ? 'opacity-50' : ''}`}
-            title={!isAuthenticated ? 'Login to save favorites' : isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          >
-            <Heart className={`size-6 ${isFavorite ? 'fill-current' : ''}`} />
-          </button>
-        </div>
-
-        {/* Items and Categories */}
-        <div className="flex items-center gap-2 mb-3 text-gray-700">
-          <Package className="size-4" />
-          <span>+{sale.itemCount} items</span>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">{sale.categories.join(', ')}</p>
-
-        {/* Who's Going */}
-        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Who's going?</p>
-            <div className="flex items-center gap-1">
-              {sale.attendees.slice(0, 3).map((attendee, index) => (
-                <div 
-                  key={index}
-                  className="size-8 rounded-full bg-linear-to-br from-emerald-400 to-emerald-600 flex items-center justify-center text-white text-xs border-2 border-white -ml-2 first:ml-0"
-                  title={attendee}
-                >
-                  {attendee.charAt(0)}
-                </div>
-              ))}
-              {sale.attendees.length > 3 && (
-                <div className="size-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-xs -ml-2">
-                  +{sale.attendees.length - 3}
-                </div>
-              )}
+          {typeof listing.price === 'number' && listing.price > 0 && (
+            <div className="flex items-center text-emerald-600 font-medium">
+              <DollarSign className="size-4" />
+              {listing.price.toFixed(2)}
             </div>
-          </div>
-          <button className="text-emerald-600 hover:text-emerald-700 text-sm">
-            Check in!
-          </button>
+          )}
+        </div>
+        <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+          <span>{listing.category_name || 'General'}</span>
+          {distanceMi !== null && <span>{distanceMi} mi</span>}
         </div>
       </div>
     </div>
