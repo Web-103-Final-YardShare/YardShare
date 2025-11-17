@@ -1,4 +1,28 @@
 const pool = require('../db/pool')
+const cloudinary = require('cloudinary').v2
+const streamifier = require('streamifier')
+
+// Configure Cloudinary from environment variables. Set CLOUDINARY_URL or the individual vars.
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({ secure: true })
+} else if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  })
+}
+
+const uploadBufferToCloudinary = (buffer, options = {}) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(options, (err, result) => {
+      if (err) return reject(err)
+      resolve(result)
+    })
+    streamifier.createReadStream(buffer).pipe(uploadStream)
+  })
+}
 
 // GET all listings
 const getAllListings = async (req, res) => {
@@ -144,7 +168,7 @@ const getListing = async (req, res) => {
 // POST new listing
 const createListing = async (req, res) => {
   try {
-    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex } = req.body
+    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex, items } = req.body
     const seller_id = req.user ? req.user.id : null
     
     if (!seller_id) {
@@ -165,6 +189,8 @@ const createListing = async (req, res) => {
       return res.status(400).json({ error: 'Invalid longitude' })
     }
     
+    // Use a transaction so listing, photos, and items are inserted atomically
+    await pool.query('BEGIN')
     const results = await pool.query(`
       INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
@@ -173,31 +199,66 @@ const createListing = async (req, res) => {
 
     const listing = results.rows[0]
 
-    // If URL photos provided, insert them and set primary
-    if (Array.isArray(photos) && photos.length > 0) {
-      const primaryIdx = Number.isInteger(primaryIndex) ? primaryIndex : 0
-      for (let i = 0; i < photos.length; i++) {
-        const url = photos[i]
-        const isPrimary = i === primaryIdx
-        await pool.query(
-          `INSERT INTO listing_photos (listing_id, url, is_primary, position) VALUES ($1, $2, $3, $4)`,
-          [listing.id, url, isPrimary, i]
-        )
-      }
-    }
-
-    // If files uploaded set primary
+    // If files uploaded, upload to Cloudinary and insert photo records
     const files = req.files || []
     if (files.length > 0) {
       const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
       for (let i = 0; i < files.length; i++) {
         const f = files[i]
         const isPrimary = i === primaryIdx
-        await pool.query(
-          `INSERT INTO listing_photos (listing_id, data, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-          [listing.id, f.buffer, f.mimetype, isPrimary, i]
-        )
+        try {
+          const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
+          const url = result.secure_url || result.url
+          await pool.query(
+            `INSERT INTO listing_photos (listing_id, url, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [listing.id, url, f.mimetype, isPrimary, i]
+          )
+        } catch (uploadErr) {
+          console.error('Cloudinary upload failed:', uploadErr)
+          throw uploadErr
+        }
       }
+    }
+
+    // If items were provided (JSON array or stringified JSON), insert them into `items` table
+    try {
+      if (items) {
+        let parsed = items
+        if (typeof items === 'string') {
+          try {
+            parsed = JSON.parse(items)
+          } catch (e) {
+            parsed = []
+          }
+        }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allowedConditions = ['excellent', 'good', 'fair', 'poor']
+          for (let i = 0; i < parsed.length; i++) {
+            const it = parsed[i] || {}
+            const itemTitle = it.title ? String(it.title).trim() : ''
+            if (!itemTitle) continue // skip empty items
+            const itemDescription = it.description || ''
+            const itemPrice = (it.price !== undefined && it.price !== null && it.price !== '') ? Number(it.price) : 0.00
+            const itemCategory = it.category_id ? Number(it.category_id) : null
+            const rawCondition = it.condition !== undefined && it.condition !== null ? String(it.condition) : null
+            const itemCondition = rawCondition ? String(rawCondition).toLowerCase() : null
+            if (!itemCondition || !allowedConditions.includes(itemCondition)) {
+              const ve = new Error(`Invalid item condition for item ${i + 1}: ${rawCondition}`)
+              ve.status = 400
+              throw ve
+            }
+            const itemImage = it.image_url || null
+            await pool.query(`
+              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [listing.id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
+          }
+        }
+      }
+    } catch (innerErr) {
+      console.error('Error inserting items for listing:', innerErr)
+      // Rollback will happen below in outer catch
+      throw innerErr
     }
 
     // Return listing with photos
@@ -216,10 +277,17 @@ const createListing = async (req, res) => {
       GROUP BY l.id
     `, [listing.id])
     
+    await pool.query('COMMIT')
     res.status(201).json(withPhotos.rows[0])
   } catch (error) {
     console.error('Error in createListing:', error)
-    res.status(409).json({ error: error.message })
+    try {
+      await pool.query('ROLLBACK')
+    } catch (rbErr) {
+      console.error('Rollback failed:', rbErr)
+    }
+    const status = error && (error.status || error.statusCode) ? (error.status || error.statusCode) : 409
+    res.status(status).json({ error: error.message })
   }
 }
 
@@ -227,7 +295,7 @@ const createListing = async (req, res) => {
 const updateListing = async (req, res) => {
   try {
     const id = parseInt(req.params.id)
-    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photos, primaryIndex } = req.body
+    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, is_available, photos, primaryIndex, items } = req.body
     
     // Check ownership
     const ownerCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [id])
@@ -238,6 +306,9 @@ const updateListing = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this listing' })
     }
     
+    // Support frontend `is_available` field (maps to `is_active` in DB)
+    const finalIsActive = (is_active !== undefined) ? is_active : (is_available !== undefined ? is_available : null)
+
     const results = await pool.query(`
       UPDATE listings
       SET title = COALESCE($1, title),
@@ -252,7 +323,7 @@ const updateListing = async (req, res) => {
           is_active = COALESCE($10, is_active)
       WHERE id = $11
       RETURNING *
-    `, [title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, id])
+    `, [title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, finalIsActive, id])
 
     const updated = results.rows[0]
 
@@ -275,12 +346,61 @@ const updateListing = async (req, res) => {
         for (let i = 0; i < filesUpd.length; i++) {
           const f = filesUpd[i]
           const isPrimary = i === primaryIdx
-          await pool.query(
-            `INSERT INTO listing_photos (listing_id, data, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [id, f.buffer, f.mimetype, isPrimary, i]
-          )
+          try {
+            const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
+            const url = result.secure_url || result.url
+            await pool.query(
+              `INSERT INTO listing_photos (listing_id, url, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+              [id, url, f.mimetype, isPrimary, i]
+            )
+          } catch (uploadErr) {
+            console.error('Cloudinary upload failed during update:', uploadErr)
+            throw uploadErr
+          }
         }
       }
+    }
+    
+    // If items provided (JSON array or stringified JSON), replace items
+    try {
+      if (items !== undefined) {
+        let parsed = items
+        if (typeof items === 'string') {
+          try {
+            parsed = JSON.parse(items)
+          } catch (e) {
+            parsed = []
+          }
+        }
+        if (Array.isArray(parsed)) {
+          // Delete existing items for listing and insert the provided ones in order
+          await pool.query('DELETE FROM items WHERE listing_id = $1', [id])
+          const allowedConditions = ['excellent', 'good', 'fair', 'poor']
+          for (let i = 0; i < parsed.length; i++) {
+            const it = parsed[i] || {}
+            const itemTitle = it.title ? String(it.title).trim() : ''
+            if (!itemTitle) continue // skip empty items
+            const itemDescription = it.description || ''
+            const itemPrice = (it.price !== undefined && it.price !== null && it.price !== '') ? Number(it.price) : 0.00
+            const itemCategory = it.category_id ? Number(it.category_id) : null
+            const rawCondition = it.condition !== undefined && it.condition !== null ? String(it.condition) : null
+            const itemCondition = rawCondition ? String(rawCondition).toLowerCase() : null
+            if (!itemCondition || !allowedConditions.includes(itemCondition)) {
+              const ve = new Error(`Invalid item condition for item ${i + 1}: ${rawCondition}`)
+              ve.status = 400
+              throw ve
+            }
+            const itemImage = it.image_url || null
+            await pool.query(`
+              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
+          }
+        }
+      }
+    } catch (innerErr) {
+      console.error('Error updating items for listing:', innerErr)
+      throw innerErr
     }
 
     const withPhotos = await pool.query(`

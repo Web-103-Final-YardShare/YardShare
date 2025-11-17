@@ -103,15 +103,17 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
 
   const status = useMemo(() => {
     try {
-      const saleDate = new Date(listing.sale_date);
-      if (isNaN(saleDate.getTime())) return 'upcoming';
+      if (!listing.sale_date) return 'upcoming';
       
       const now = new Date();
-      const today = now.toISOString().slice(0, 10);
-      const saleDateStr = saleDate.toISOString().slice(0, 10);
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      // Parse the sale_date string (YYYY-MM-DD format from database)
+      const [year, month, day] = listing.sale_date.split('T')[0].split('-').map(Number);
+      const saleDate = new Date(year, month - 1, day);
       
       // Check if it's today
-      if (saleDateStr === today) {
+      if (saleDate.getTime() === today.getTime()) {
         // Parse start and end times
         if (listing.start_time && listing.end_time) {
           const [startHour, startMin] = listing.start_time.split(':').map(Number);
@@ -131,7 +133,7 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
         } else {
           return 'now'; // No time specified, assume happening all day
         }
-      } else if (saleDate < now) {
+      } else if (saleDate < today) {
         return 'ended';
       }
       
@@ -163,11 +165,17 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
   const formatTimeRange = (dateStr, start, end) => {
     if (!dateStr) return '';
     try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '';
-      const today = new Date();
-      const sameDay = d.toISOString().slice(0, 10) === today.toISOString().slice(0, 10);
-      const dayLabel = sameDay ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      // Parse the sale_date string (YYYY-MM-DD format from database)
+      const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
+      const saleDate = new Date(year, month - 1, day);
+      
+      if (isNaN(saleDate.getTime())) return '';
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const sameDay = saleDate.getTime() === today.getTime();
+      
+      const dayLabel = sameDay ? 'Today' : saleDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
       
       const formatHour = (t) => {
         if (!t) return '';
@@ -249,32 +257,40 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
     <div 
       className="block border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transform hover:-translate-y-1 transition-all bg-white cursor-pointer no-underline"
     >
+      {/* Photo */}
+      <div className="relative h-48 bg-gray-100">
+        <img 
+          src={photoUrl} 
+          alt={listing.title || 'Yard sale'} 
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.target.src = 'https://via.placeholder.com/600x400?text=Yard+Sale';
+          }}
+        />
+        {/* Status Badge - positioned over photo */}
+        <span className={`absolute top-2 left-2 text-xs font-bold px-2.5 py-1 rounded ${
+          status === 'now' 
+            ? 'bg-emerald-500 text-white' 
+            : status === 'ended'
+              ? 'bg-red-500 text-white'
+              : 'bg-gray-400 text-white'
+        }`}>
+          {status === 'now' ? '● HAPPENING NOW' : status === 'ended' ? 'ENDED' : 'UPCOMING'}
+        </span>
+        {/* Heart Save Icon - positioned over photo */}
+        <button
+          onClick={handleFavoriteClick}
+          className="absolute top-2 right-2 bg-white rounded-full p-1 hover:bg-gray-50 transition-colors"
+          title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        >
+          <Heart className={`w-5 h-5 ${
+            isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400'
+          }`} />
+        </button>
+      </div>
+
       {/* Card Content */}
       <div className="p-3">
-        {/* Header with Status Badge and Heart */}
-        <div className="flex items-start justify-between mb-2">
-          {/* Status Badge */}
-          <span className={`text-xs font-bold px-2.5 py-1 rounded ${
-            status === 'now' 
-              ? 'bg-emerald-500 text-white' 
-              : status === 'ended'
-                ? 'bg-red-500 text-white'
-                : 'bg-gray-400 text-white'
-          }`}>
-            {status === 'now' ? '● HAPPENING NOW' : status === 'ended' ? 'ENDED' : 'UPCOMING'}
-          </span>
-
-          {/* Heart Save Icon */}
-          <button
-            onClick={handleFavoriteClick}
-            className="bg-white rounded-full p-1 hover:bg-gray-50 transition-colors"
-            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
-          >
-            <Heart className={`w-5 h-5 ${
-              isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400'
-            }`} />
-          </button>
-        </div>
         {/* Title */}
         <h3 className="text-gray-900 font-bold text-base mb-1 line-clamp-1">
           {listing.title || listing.location || 'Yard Sale'}

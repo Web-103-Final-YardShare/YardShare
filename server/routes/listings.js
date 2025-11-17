@@ -23,6 +23,7 @@ router.get('/stats/nearby-count', getNearbyCount)
 router.get('/', getAllListings)
 router.get('/my-listings', getSellerListings)
 router.get('/:id/photos/:photoId', getListingPhoto)
+router.get('/:id/items', require('../controllers/items').getItemsByListing)
 router.get('/:id', getListing)
 router.post('/', upload.array('photos', 10), createListing)
 // Check-in endpoints
