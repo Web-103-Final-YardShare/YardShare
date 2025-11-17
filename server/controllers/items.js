@@ -8,7 +8,7 @@ const getItem = async (req, res) => {
     const result = await pool.query(`
       SELECT 
         items.*,
-        categories.name as category_name,
+        items.category as category_name,
         listings.title as sale_title,
         listings.location as sale_location,
         listings.latitude,
@@ -18,7 +18,6 @@ const getItem = async (req, res) => {
         listings.end_time
       FROM items
       JOIN listings ON items.listing_id = listings.id
-      LEFT JOIN categories ON items.category_id = categories.id
       WHERE items.id = $1
     `, [itemId])
     
@@ -41,14 +40,13 @@ const getAllItems = async (req, res) => {
     let query = `
       SELECT 
         items.*,
-        categories.name as category_name,
+        items.category as category_name,
         listings.title as sale_title,
         listings.location as sale_location,
         listings.latitude,
         listings.longitude
       FROM items
       JOIN listings ON items.listing_id = listings.id
-      LEFT JOIN categories ON items.category_id = categories.id
       WHERE items.sold = false AND listings.is_active = true
     `
     
@@ -57,7 +55,7 @@ const getAllItems = async (req, res) => {
     // Filter by category
     if (category) {
       params.push(category)
-      query += ` AND categories.name = $${params.length}`
+      query += ` AND items.category = $${params.length}`
     }
     
     // Search by title/description
@@ -84,9 +82,8 @@ const getItemsByListing = async (req, res) => {
     const result = await pool.query(`
       SELECT 
         items.*,
-        categories.name as category_name
+        items.category as category_name
       FROM items
-      LEFT JOIN categories ON items.category_id = categories.id
       WHERE items.listing_id = $1
       ORDER BY items.display_order, items.created_at
     `, [listingId])
@@ -102,7 +99,7 @@ const getItemsByListing = async (req, res) => {
 const createItem = async (req, res) => {
   try {
     const { listingId } = req.params
-    const { title, description, price, condition, category_id, image_url } = req.body
+    const { title, description, price, condition, category, image_url } = req.body
     
     // Validate required fields
     if (!title || !price || !condition) {
@@ -120,10 +117,10 @@ const createItem = async (req, res) => {
     }
     
     const result = await pool.query(`
-      INSERT INTO items (listing_id, title, description, price, condition, category_id, image_url)
+      INSERT INTO items (listing_id, title, description, price, condition, category, image_url)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [listingId, title, description, price, condition, category_id, image_url])
+    `, [listingId, title, description, price, condition, category, image_url])
     
     res.status(201).json(result.rows[0])
   } catch (error) {
@@ -136,7 +133,7 @@ const createItem = async (req, res) => {
 const updateItem = async (req, res) => {
   try {
     const { itemId } = req.params
-    const { title, description, price, condition, category_id, image_url, sold } = req.body
+    const { title, description, price, condition, category, image_url, sold } = req.body
     
     // Check ownership
     const ownerCheck = await pool.query(`
@@ -161,12 +158,12 @@ const updateItem = async (req, res) => {
         description = COALESCE($2, description),
         price = COALESCE($3, price),
         condition = COALESCE($4, condition),
-        category_id = COALESCE($5, category_id),
+        category = COALESCE($5, category),
         image_url = COALESCE($6, image_url),
         sold = COALESCE($7, sold)
       WHERE id = $8
       RETURNING *
-    `, [title, description, price, condition, category_id, image_url, sold, itemId])
+    `, [title, description, price, condition, category, image_url, sold, itemId])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })

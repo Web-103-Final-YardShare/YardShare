@@ -96,7 +96,7 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
       }
     }
     if (listing.image_url && listing.image_url.startsWith('/')) return `${API_BASE}${listing.image_url}`;
-    return listing.image_url || 'https://via.placeholder.com/600x400?text=Yard+Sale';
+    return listing.image_url || 'https://placehold.co/600x400?text=No+Image';
   }, [listing.photos, listing.image_url]);
 
   const distanceMi = useMemo(() => {
@@ -267,7 +267,7 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
           alt={listing.title || 'Yard sale'} 
           className="w-full h-full object-cover"
           onError={(e) => {
-            e.target.src = 'https://via.placeholder.com/600x400?text=Yard+Sale';
+            e.target.src = 'https://placehold.co/600x400?text=No+Image';
           }}
         />
         {/* Status Badge - positioned over photo */}

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Layout } from './Layout'
 import { LoadingSpinner } from './LoadingSpinner'
 import { MapView } from './MapView'
+import { ItemCard } from './ItemCard'
+import { ItemDetailModal } from './ItemDetailPage'
 import { Heart } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -21,6 +23,8 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
   const [checkedInUsers, setCheckedInUsers] = useState([])
   const [isListingSaved, setIsListingSaved] = useState(false)
   const [savedItems, setSavedItems] = useState(new Set())
+  const [selectedItemId, setSelectedItemId] = useState(null)
+  const [showCheckInModal, setShowCheckInModal] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -47,6 +51,13 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
             const favData = await favRes.json()
             setIsListingSaved(favData.some(f => f.id === parseInt(id)))
           }
+          
+          // Load saved items from API
+          const itemFavRes = await fetch(`${API_BASE}/api/favorites/items`, { credentials: 'include' })
+          if (itemFavRes.ok) {
+            const itemFavData = await itemFavRes.json()
+            setSavedItems(new Set(itemFavData.map(item => item.id)))
+          }
         }
 
         // Fetch items
@@ -69,37 +80,53 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
       toast.error('Please login to check in')
       return
     }
+    
+    // If checking in, show modal first
+    if (!isCheckedIn) {
+      setShowCheckInModal(true)
+      return
+    }
+    
+    // For checkout, do it directly
     setChecking(true)
     try {
-      if (isCheckedIn) {
-        const res = await fetch(`${API_BASE}/api/listings/${id}/checkin`, {
-          method: 'DELETE',
-          credentials: 'include'
-        })
-        if (res.ok) {
-          setIsCheckedIn(false)
-          setCheckInCount(prev => Math.max(0, prev - 1))
-          if (user) {
-            setCheckedInUsers(prev => prev.filter(u => u.username !== user.username))
-          }
-          toast.success('Checked out')
+      const res = await fetch(`${API_BASE}/api/listings/${id}/checkin`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+      if (res.ok) {
+        setIsCheckedIn(false)
+        setCheckInCount(prev => Math.max(0, prev - 1))
+        if (user) {
+          setCheckedInUsers(prev => prev.filter(u => u.username !== user.username))
         }
-      } else {
-        const res = await fetch(`${API_BASE}/api/listings/${id}/checkin`, {
-          method: 'POST',
-          credentials: 'include'
-        })
-        if (res.ok) {
-          setIsCheckedIn(true)
-          setCheckInCount(prev => prev + 1)
-          if (user) {
-            setCheckedInUsers(prev => [
-              { id: Date.now(), username: user.username, avatarurl: user.avatar_url },
-              ...prev
-            ])
-          }
-          toast.success('Checked in!')
+        toast.success('Checked out')
+      }
+    } catch (e) {
+      toast.error('Check-in failed')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const confirmCheckIn = async () => {
+    setChecking(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/listings/${id}/checkin`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (res.ok) {
+        setIsCheckedIn(true)
+        setCheckInCount(prev => prev + 1)
+        if (user) {
+          setCheckedInUsers(prev => [
+            { id: Date.now(), username: user.username, avatarurl: user.avatar_url },
+            ...prev
+          ])
         }
+        toast.success('Checked in!')
+        setShowCheckInModal(false) // Close modal on success
       }
     } catch (e) {
       toast.error('Check-in failed')
@@ -145,17 +172,37 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
     }
     try {
       if (savedItems.has(itemId)) {
-        // TODO: Implement item-specific favorites API endpoint
-        setSavedItems(prev => {
-          const next = new Set(prev)
-          next.delete(itemId)
-          return next
+        // Remove item favorite via API
+        const res = await fetch(`${API_BASE}/api/favorites/items/${itemId}`, {
+          method: 'DELETE',
+          credentials: 'include'
         })
-        toast.success('Item removed from saved')
+        if (res.ok) {
+          setSavedItems(prev => {
+            const next = new Set(prev)
+            next.delete(itemId)
+            return next
+          })
+          toast.success('Item removed from saved')
+        } else {
+          throw new Error('Failed to remove')
+        }
       } else {
-        // TODO: Implement item-specific favorites API endpoint
-        setSavedItems(prev => new Set(prev).add(itemId))
-        toast.success('Item saved')
+        // Add item favorite via API
+        const res = await fetch(`${API_BASE}/api/favorites/items/${itemId}`, {
+          method: 'POST',
+          credentials: 'include'
+        })
+        if (res.ok) {
+          setSavedItems(prev => {
+            const next = new Set(prev)
+            next.add(itemId)
+            return next
+          })
+          toast.success('Item saved')
+        } else {
+          throw new Error('Failed to save')
+        }
       }
     } catch (e) {
       toast.error('Failed to save item')
@@ -239,7 +286,10 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
   }
 
   const status = getStatus()
-  const photoUrl = listing.photos?.[0]?.url || listing.image_url || 'https://via.placeholder.com/800x400?text=Yard+Sale'
+  // photos is now an array of URL strings from photo_urls column
+  const photoUrl = (Array.isArray(listing.photos) && listing.photos.length > 0) 
+    ? listing.photos[0] 
+    : listing.image_url || 'https://placehold.co/800x400?text=No+Image'
 
   return (
     <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
@@ -351,52 +401,70 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
                 <h2 className="text-xl font-semibold mb-4">Items for Sale</h2>
                 <div className="grid sm:grid-cols-2 gap-4">
                   {items.map(item => (
-                    <div key={item.id} className="border rounded-lg overflow-hidden hover:shadow-md transition">
-                      {item.image_url && (
-                        <img src={item.image_url} alt={item.title} className="w-full h-40 object-cover" />
-                      )}
-                      <div className="p-4">
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-semibold">{item.title}</h3>
-                          <span className="text-emerald-600 font-bold">${item.price}</span>
-                        </div>
-                        <div className="flex gap-2 mb-2">
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            item.condition === 'excellent' ? 'bg-green-100 text-green-700' :
-                            item.condition === 'good' ? 'bg-blue-100 text-blue-700' :
-                            item.condition === 'fair' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {item.condition}
-                          </span>
-                        </div>
-                        {item.description && (
-                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">{item.description}</p>
-                        )}
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleSaveItem(item.id)
-                          }}
-                          className={`mt-3 w-full py-2 rounded font-medium text-sm flex items-center justify-center gap-2 transition-colors ${
-                            savedItems.has(item.id)
-                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                              : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                          }`}
-                        >
-                          <Heart className={`w-4 h-4 ${
-                            savedItems.has(item.id) ? 'fill-red-500' : ''
-                          }`} />
-                          {savedItems.has(item.id) ? 'Saved' : 'Save Item'}
-                        </button>
-                      </div>
-                    </div>
+                    <ItemCard 
+                      key={item.id}
+                      item={item}
+                      isSaved={savedItems.has(item.id)}
+                      onSave={handleSaveItem}
+                      onItemClick={setSelectedItemId}
+                    />
                   ))}
                 </div>
               </div>
             )}
           </div>
         </div>
+
+        {/* Item Detail Modal */}
+        <ItemDetailModal 
+          itemId={selectedItemId}
+          isOpen={selectedItemId !== null}
+          onClose={() => setSelectedItemId(null)}
+          isAuthenticated={isAuthenticated}
+          onFavoriteChange={() => {
+            // Refetch listing to update item favorite states
+            fetch(`${API_BASE}/api/listings/${id}`, { credentials: 'include' })
+              .then(res => res.json())
+              .then(data => setListing(data))
+              .catch(() => {})
+          }}
+        />
+
+        {/* Check-in Confirmation Modal */}
+        {showCheckInModal && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setShowCheckInModal(false)}
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              <div 
+                className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-bold mb-4">Check in to this yard sale?</h3>
+                <p className="text-gray-600 mb-6">
+                  Let others know you're planning to attend! You can check out anytime.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowCheckInModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmCheckIn}
+                    disabled={checking}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {checking ? 'Checking in...' : 'Check in'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </Layout>
   )

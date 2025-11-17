@@ -51,30 +51,22 @@ const getAllListings = async (req, res) => {
         /* Count unsold items */
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
-        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
-        /* Checked-in users and count */
+        ARRAY_AGG(DISTINCT i.category) FILTER (WHERE i.category IS NOT NULL) as item_categories,
+        /* Checked-in users from attendee_ids array */
         COALESCE(
-          json_agg(DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)) FILTER (WHERE au.id IS NOT NULL), '[]'
+          (
+            SELECT json_agg(jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl))
+            FROM users au
+            WHERE au.id = ANY(l.attendee_ids)
+          ), '[]'
         ) AS checked_in_users,
-        COUNT(DISTINCT a.user_id) AS check_in_count,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', p.id,
-              'url', CASE WHEN COALESCE(p.url, '') <> '' THEN p.url ELSE '/api/listings/' || l.id || '/photos/' || p.id END,
-              'is_primary', p.is_primary,
-              'position', p.position
-            )
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
+        /* Check-in count */
+        COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
+        /* Photos */
+        l.photo_urls as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
-      LEFT JOIN checkins a ON a.listing_id = l.id
-      LEFT JOIN users au ON au.id = a.user_id
       LEFT JOIN items i ON i.listing_id = l.id
-      LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.is_active = true
       AND (
         /* Text search */
@@ -126,30 +118,22 @@ const getListing = async (req, res) => {
         /* Count unsold items */
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
-        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
-        /* Checked-in users and count */
+        ARRAY_AGG(DISTINCT i.category) FILTER (WHERE i.category IS NOT NULL) as item_categories,
+        /* Checked-in users from attendee_ids array */
         COALESCE(
-          json_agg(DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)) FILTER (WHERE au.id IS NOT NULL), '[]'
+          (
+            SELECT json_agg(jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl))
+            FROM users au
+            WHERE au.id = ANY(l.attendee_ids)
+          ), '[]'
         ) AS checked_in_users,
-        COUNT(DISTINCT a.user_id) AS check_in_count,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', p.id,
-              'url', CASE WHEN COALESCE(p.url, '') <> '' THEN p.url ELSE '/api/listings/' || l.id || '/photos/' || p.id END,
-              'is_primary', p.is_primary,
-              'position', p.position
-            )
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
+        /* Check-in count */
+        COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
+        /* Photos */
+        l.photo_urls as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN checkins a ON a.listing_id = l.id
-      LEFT JOIN users au ON au.id = a.user_id
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
       LEFT JOIN items i ON i.listing_id = l.id
-      LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.id = $1
       GROUP BY l.id, u.username, u.avatarurl
     `, [id])
@@ -561,7 +545,7 @@ const checkInListing = async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Must be logged in to check in' })
 
     await pool.query(
-      `INSERT INTO checkins (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      `UPDATE listings SET attendee_ids = array_append(attendee_ids, $1) WHERE id = $2 AND NOT ($1 = ANY(attendee_ids))`,
       [userId, listingId]
     )
 
@@ -579,7 +563,7 @@ const uncheckInListing = async (req, res) => {
     const userId = req.user ? req.user.id : null
     if (!userId) return res.status(401).json({ error: 'Must be logged in to un-check in' })
 
-    await pool.query(`DELETE FROM checkins WHERE user_id = $1 AND listing_id = $2`, [userId, listingId])
+    await pool.query(`UPDATE listings SET attendee_ids = array_remove(attendee_ids, $1) WHERE id = $2`, [userId, listingId])
 
     res.status(200).json({ ok: true })
   } catch (error) {

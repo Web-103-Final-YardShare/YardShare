@@ -336,7 +336,7 @@ function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
   const [itemErrors, setItemErrors] = useState([])
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-40" onClick={onClose} />
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white w-full max-w-2xl rounded-lg shadow p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">Edit Listing</h2>
         <div className="space-y-4">

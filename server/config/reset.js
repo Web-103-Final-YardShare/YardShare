@@ -111,8 +111,8 @@ const seedTestData = async () => {
     
     // Create Orlando-based yard sales
     const listing1 = await pool.query(`
-      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photo_urls)
-      VALUES ($1, $2, $3, CURRENT_DATE, '08:00', '13:00', $4, $5, $6, $7, true, $8)
+      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photo_urls, attendee_ids)
+      VALUES ($1, $2, $3, CURRENT_DATE, '08:00', '13:00', $4, $5, $6, $7, true, $8, '{}'::INTEGER[])
       RETURNING id
     `, [
       userId,
@@ -127,8 +127,8 @@ const seedTestData = async () => {
     const listingId1 = listing1.rows[0].id
 
     const listing2 = await pool.query(`
-      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photo_urls)
-      VALUES ($1, $2, $3, CURRENT_DATE + 1, '09:00', '15:00', $4, $5, $6, $7, true, $8)
+      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photo_urls, attendee_ids)
+      VALUES ($1, $2, $3, CURRENT_DATE + 1, '09:00', '15:00', $4, $5, $6, $7, true, $8, '{}'::INTEGER[])
       RETURNING id
     `, [
       userId,
@@ -239,8 +239,8 @@ const seedTestData = async () => {
 
     // Add attendees to listing1
     await pool.query(`
-      UPDATE listings SET attendee_ids = ARRAY[$1, $2] WHERE id = $3
-    `, [userId, bryanId, listingId1])
+      UPDATE listings SET attendee_ids = $1::INTEGER[] WHERE id = $2
+    `, [[userId, bryanId], listingId1])
     
     console.log('✅ Test data seeded')
     console.log(`   - Created 2 yard sales`)
