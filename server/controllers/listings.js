@@ -184,11 +184,13 @@ const createListing = async (req, res) => {
     const listing = results.rows[0]
 
     // If files uploaded, upload to Cloudinary and insert photo records
-    const files = req.files || []
-    if (files.length > 0) {
+    // Filter only files with fieldname 'photos' (listing photos)
+    const allFiles = req.files || []
+    const listingPhotoFiles = allFiles.filter(f => f.fieldname === 'photos')
+    if (listingPhotoFiles.length > 0) {
       const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i]
+      for (let i = 0; i < listingPhotoFiles.length; i++) {
+        const f = listingPhotoFiles[i]
         const isPrimary = i === primaryIdx
         try {
           const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
@@ -231,7 +233,29 @@ const createListing = async (req, res) => {
               ve.status = 400
               throw ve
             }
-            const itemImage = it.image_url || null
+            
+            // Check if item has photo uploaded
+            let itemImage = it.image_url || null
+            if (it.hasPhoto && req.files) {
+              // Look for item_photo_{i} in req.files
+              const itemPhotoField = `item_photo_${i}`
+              const itemPhotoFile = Array.isArray(req.files) 
+                ? req.files.find(f => f.fieldname === itemPhotoField)
+                : req.files[itemPhotoField]?.[0]
+                
+              if (itemPhotoFile) {
+                try {
+                  const result = await uploadBufferToCloudinary(itemPhotoFile.buffer, { 
+                    folder: process.env.CLOUDINARY_FOLDER ? `${process.env.CLOUDINARY_FOLDER}/items` : 'yardshare/items' 
+                  })
+                  itemImage = result.secure_url || result.url
+                } catch (uploadErr) {
+                  console.error(`Failed to upload item photo ${i}:`, uploadErr)
+                  // Continue without image
+                }
+              }
+            }
+            
             await pool.query(`
               INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
