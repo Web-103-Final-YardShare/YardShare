@@ -5,9 +5,10 @@ import { LoadingSpinner } from './LoadingSpinner';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorite, isAuthenticated, user, location, distanceMiles = 10 }) {
+export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorite, isAuthenticated, user, location, distanceMiles = 10, filters }) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
+  const [allListings, setAllListings] = useState([]);
   const radiusKm = useMemo(() => Math.max(1, Math.round(distanceMiles * 1.60934)), [distanceMiles]);
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
         const res = await fetch(url, { credentials: 'include', signal: controller.signal });
         if (res.ok) {
           const data = await res.json();
-          setItems(data);
+          setAllListings(data);
         }
       } catch (e) {
         if (e.name !== 'AbortError') console.error('Failed to load listings', e);
@@ -37,6 +38,69 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
     fetchListings();
     return () => controller.abort();
   }, [searchQuery, location?.lat, location?.lng, radiusKm]);
+
+  // Apply filters to listings
+  useEffect(() => {
+    if (!filters) {
+      setItems(allListings);
+      return;
+    }
+
+    let filtered = [...allListings];
+
+    // Filter by status
+    if (filters.status && filters.status !== 'all') {
+      filtered = filtered.filter(listing => {
+        const status = calculateStatus(listing);
+        if (filters.status === 'happening') return status === 'now';
+        if (filters.status === 'today') return status === 'today';
+        if (filters.status === 'upcoming') return status === 'upcoming';
+        return true;
+      });
+    }
+
+    // Filter by categories
+    if (filters.categories && filters.categories.length > 0) {
+      filtered = filtered.filter(listing => {
+        const listingCategories = listing.item_categories || [];
+        return filters.categories.some(cat => listingCategories.includes(cat));
+      });
+    }
+
+    setItems(filtered);
+  }, [allListings, filters]);
+
+  // Helper function to calculate status
+  const calculateStatus = (listing) => {
+    try {
+      if (!listing.sale_date) return 'upcoming';
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const [year, month, day] = listing.sale_date.split('T')[0].split('-').map(Number);
+      const saleDate = new Date(year, month - 1, day);
+      
+      if (saleDate.getTime() === today.getTime()) {
+        if (listing.start_time && listing.end_time) {
+          const [startHour, startMin] = listing.start_time.split(':').map(Number);
+          const [endHour, endMin] = listing.end_time.split(':').map(Number);
+          const currentHour = now.getHours();
+          const currentMin = now.getMinutes();
+          const currentTime = currentHour * 60 + currentMin;
+          const startTime = startHour * 60 + startMin;
+          const endTime = endHour * 60 + endMin;
+          
+          if (currentTime >= startTime && currentTime <= endTime) return 'now';
+          if (currentTime > endTime) return 'ended';
+        }
+        return 'today';
+      }
+      if (saleDate < today) return 'ended';
+      return 'upcoming';
+    } catch (e) { 
+      return 'upcoming';
+    }
+  };
 
   return (
     <div className="w-96 bg-white border-r border-gray-200 overflow-y-auto">
@@ -87,6 +151,15 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [localCheckedInUsers, setLocalCheckedInUsers] = useState(listing.checked_in_users || []);
   
+  // Force re-render every minute to update status badge in real-time
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1);
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+  
   const photoUrl = useMemo(() => {
     const photos = listing.photos || [];
     if (photos.length > 0) {
@@ -132,9 +205,8 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
           } else if (currentTime > endTime) {
             return 'ended';
           }
-        } else {
-          return 'now'; // No time specified, assume happening all day
         }
+        return 'today'; // Event is today (either before start time or no time specified)
       } else if (saleDate < today) {
         return 'ended';
       }
@@ -143,7 +215,7 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
     } catch (e) { 
       return 'upcoming';
     }
-  }, [listing.sale_date, listing.start_time, listing.end_time]);
+  }, [listing.sale_date, listing.start_time, listing.end_time, tick]);
 
   const categoryEmojis = useMemo(() => {
     const map = {
@@ -276,9 +348,11 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
             ? 'bg-emerald-500 text-white' 
             : status === 'ended'
               ? 'bg-red-500 text-white'
-              : 'bg-gray-400 text-white'
+              : status === 'today'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-400 text-white'
         }`}>
-          {status === 'now' ? '● HAPPENING NOW' : status === 'ended' ? 'ENDED' : 'UPCOMING'}
+          {status === 'now' ? '● HAPPENING NOW' : status === 'ended' ? 'ENDED' : status === 'today' ? 'TODAY' : 'UPCOMING'}
         </span>
         {/* Heart Save Icon - positioned over photo */}
         <button

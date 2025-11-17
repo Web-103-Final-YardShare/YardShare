@@ -37,6 +37,7 @@ export function HomePage({ isAuthenticated, user, favorites, toggleFavorite, onL
           user={user}
           location={location}
           distanceMiles={filters.distance}
+          filters={filters}
         />
         <MapView location={location} searchQuery={searchQuery} radiusMiles={filters.distance} />
       </div>

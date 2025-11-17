@@ -37,7 +37,7 @@ export function FilterDialog({ open, onClose, filters, setFilters }) {
         <div className="mb-6">
           <label className="block text-sm font-semibold text-gray-700 mb-3">Status</label>
           <div className="flex gap-2">
-            {['all', 'happening', 'upcoming'].map((status) => (
+            {['all', 'happening', 'today', 'upcoming'].map((status) => (
               <button
                 key={status}
                 onClick={() => handleStatusChange(status)}

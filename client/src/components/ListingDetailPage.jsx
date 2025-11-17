@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Layout } from './Layout'
 import { LoadingSpinner } from './LoadingSpinner'
@@ -209,35 +209,55 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
     }
   }
 
-  const getStatus = () => {
-    if (!listing?.sale_date) return 'upcoming'
+  // Force re-render every minute to update status badge in real-time
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTick(t => t + 1)
+    }, 60000) // Update every minute
+    return () => clearInterval(interval)
+  }, [])
+
+  const status = useMemo(() => {
     try {
+      if (!listing?.sale_date) return 'upcoming'
+      
       const now = new Date()
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      
+      // Parse the sale_date string (YYYY-MM-DD format from database)
       const [year, month, day] = listing.sale_date.split('T')[0].split('-').map(Number)
       const saleDate = new Date(year, month - 1, day)
       
+      // Check if it's today
       if (saleDate.getTime() === today.getTime()) {
+        // Parse start and end times
         if (listing.start_time && listing.end_time) {
           const [startHour, startMin] = listing.start_time.split(':').map(Number)
           const [endHour, endMin] = listing.end_time.split(':').map(Number)
+          
           const currentHour = now.getHours()
           const currentMin = now.getMinutes()
           const currentTime = currentHour * 60 + currentMin
           const startTime = startHour * 60 + startMin
           const endTime = endHour * 60 + endMin
           
-          if (currentTime >= startTime && currentTime <= endTime) return 'now'
-          if (currentTime > endTime) return 'ended'
+          if (currentTime >= startTime && currentTime <= endTime) {
+            return 'now'
+          } else if (currentTime > endTime) {
+            return 'ended'
+          }
         }
-        return 'now'
+        return 'today' // Event is today (either before start time or no time specified)
+      } else if (saleDate < today) {
+        return 'ended'
       }
-      if (saleDate < today) return 'ended'
+      
       return 'upcoming'
-    } catch (e) {
+    } catch (e) { 
       return 'upcoming'
     }
-  }
+  }, [listing?.sale_date, listing?.start_time, listing?.end_time, tick])
 
   const formatDate = () => {
     if (!listing?.sale_date) return ''
@@ -285,7 +305,6 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
     )
   }
 
-  const status = getStatus()
   // photos is now an array of URL strings from photo_urls column
   const photoUrl = (Array.isArray(listing.photos) && listing.photos.length > 0) 
     ? listing.photos[0] 
@@ -310,9 +329,9 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
               }`} />
             </button>
             <span className={`absolute top-4 left-4 text-xs font-bold px-3 py-1.5 rounded ${
-              status === 'now' ? 'bg-emerald-500 text-white' : status === 'ended' ? 'bg-red-500 text-white' : 'bg-gray-400 text-white'
+              status === 'now' ? 'bg-emerald-500 text-white' : status === 'ended' ? 'bg-red-500 text-white' : status === 'today' ? 'bg-blue-500 text-white' : 'bg-gray-400 text-white'
             }`}>
-              {status === 'now' ? '● HAPPENING NOW' : status === 'ended' ? 'ENDED' : 'UPCOMING'}
+              {status === 'now' ? '● HAPPENING NOW' : status === 'ended' ? 'ENDED' : status === 'today' ? 'TODAY' : 'UPCOMING'}
             </span>
           </div>
 
