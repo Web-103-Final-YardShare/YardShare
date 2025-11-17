@@ -26,7 +26,7 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
     photos: [],
     primaryIndex: 0,
     items: [
-      { title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good' }
+      { title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good', photo: null }
     ],
   })
   const [files, setFiles] = useState([])
@@ -87,7 +87,11 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
     setSuccess('')
     try {
       let res
-      if (files && files.length > 0) {
+      // Always use FormData if we have either listing photos OR item photos
+      const hasListingPhotos = files && files.length > 0
+      const hasItemPhotos = (form.items || []).some(it => it.photo)
+      
+      if (hasListingPhotos || hasItemPhotos) {
         const fd = new FormData()
         fd.append('title', form.title)
         fd.append('description', form.description)
@@ -99,17 +103,28 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
         if (form.latitude != null) fd.append('latitude', String(form.latitude))
         if (form.longitude != null) fd.append('longitude', String(form.longitude))
         fd.append('primaryIndex', String(form.primaryIndex || 0))
-        // Include items as JSON string for the server to parse (multer will expose text fields)
-        const itemsForSend = (form.items || []).map(it => ({
+        
+        // Include items as JSON string (without photo data)
+        const itemsForSend = (form.items || []).map((it, idx) => ({
           title: it.title,
           description: it.description,
           price: it.price === '' || it.price === null ? 0 : Number(it.price),
           category_id: it.category_id ? Number(it.category_id) : null,
-          image_url: it.image_url || null,
-          condition: it.condition || 'good'
+          condition: it.condition || 'good',
+          hasPhoto: !!it.photo // flag to indicate photo will be uploaded
         }))
         fd.append('items', JSON.stringify(itemsForSend))
+        
+        // Append listing photos
         for (const f of files) fd.append('photos', f)
+        
+        // Append item photos with indexed field names
+        (form.items || []).forEach((it, idx) => {
+          if (it.photo) {
+            fd.append(`item_photo_${idx}`, it.photo)
+          }
+        })
+        
         res = await fetch(`${API_BASE}/api/listings`, {
           method: 'POST',
           credentials: 'include',
@@ -203,7 +218,7 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
             <LocationPicker value={{ address: form.location, latitude: form.latitude, longitude: form.longitude }} onChange={(loc) => setForm(f => ({ ...f, location: loc.address || f.location, latitude: loc.latitude, longitude: loc.longitude }))} />
           </div>
 
-        {/* Photos section */}
+          {/* Photos section */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Photos (optional)</label>
             
@@ -213,9 +228,10 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                setFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+                const droppedFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+                setFiles(droppedFiles);
               }}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors"
             >
               <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                 <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -235,45 +251,55 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
             
             {/* Image previews */}
             {files.length > 0 && (
-              <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {files.map((file, idx) => (
                   <div 
                     key={idx} 
                     className={`relative rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${
-                      form.primaryIndex === idx ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-gray-300'
+                      form.primaryIndex === idx ? 'border-sky-500 shadow-lg ring-2 ring-sky-200' : 'border-gray-200 hover:border-gray-300'
                     }`}
                     onClick={() => setForm(f => ({ ...f, primaryIndex: idx }))}
                   >
                     <img 
                       src={URL.createObjectURL(file)} 
                       alt={`Preview ${idx + 1}`}
-                      className="w-full h-24 object-cover"
+                      className="w-full h-32 object-cover"
                     />
                     {form.primaryIndex === idx && (
-                      <div className="absolute top-1 right-1 bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full">
+                      <div className="absolute top-2 right-2 bg-sky-500 text-white text-xs px-2 py-1 rounded-full font-medium shadow-sm">
                         Primary
                       </div>
                     )}
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setFiles(files.filter((_, i) => i !== idx));
-                        if (form.primaryIndex === idx) setForm(f => ({ ...f, primaryIndex: 0 }));
+                        const newFiles = files.filter((_, i) => i !== idx);
+                        setFiles(newFiles);
+                        if (form.primaryIndex === idx) {
+                          setForm(f => ({ ...f, primaryIndex: 0 }));
+                        } else if (form.primaryIndex > idx) {
+                          setForm(f => ({ ...f, primaryIndex: f.primaryIndex - 1 }));
+                        }
                       }}
-                      className="absolute top-1 left-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
+                      className="absolute top-2 left-2 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 transition-colors shadow-sm"
                     >
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                       </svg>
                     </button>
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2">
+                      <p className="text-white text-xs truncate">{file.name}</p>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
             
             {files.length > 0 && (
-              <p className="mt-2 text-sm text-gray-500">
-                {files.length} photo{files.length > 1 ? 's' : ''} selected. Click an image to set as primary.
+              <p className="mt-3 text-sm text-gray-500">
+                {files.length} photo{files.length > 1 ? 's' : ''} selected. 
+                {files.length > 1 && ' Click an image to set as primary.'}
               </p>
             )}
           </div>
@@ -329,13 +355,69 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
                   <input value={it.description} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], description: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2" />
                 </div>
                 <div className="mt-2">
-                  <label className="block text-sm text-gray-700 mb-1">Image URL (optional)</label>
-                  <input value={it.image_url} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], image_url: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2" placeholder="https://..." />
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Item Photo (optional)</label>
+                  
+                  {/* Upload area for item */}
+                  <div 
+                    onClick={() => document.getElementById(`item-file-input-${idx}`).click()}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-sky-400 hover:bg-sky-50 transition-colors"
+                  >
+                    <svg className="mx-auto h-8 w-8 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                      <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <p className="mt-1 text-xs text-gray-600">Click to upload item photo</p>
+                  </div>
+                  
+                  <input 
+                    id={`item-file-input-${idx}`}
+                    type="file" 
+                    accept="image/*"
+                    onChange={e => { 
+                      const file = e.target.files?.[0] || null
+                      setForm(f => { 
+                        const items = [...f.items]
+                        items[idx] = { ...items[idx], photo: file, image_url: '' }
+                        return { ...f, items } 
+                      })
+                      setItemErrors([])
+                    }} 
+                    className="hidden"
+                  />
+                  
+                  {/* Preview for item photo */}
+                  {it.photo && (
+                    <div className="mt-2 relative rounded-lg overflow-hidden border-2 border-gray-200">
+                      <img 
+                        src={URL.createObjectURL(it.photo)} 
+                        alt="Item preview"
+                        className="w-full h-32 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setForm(f => {
+                            const items = [...f.items];
+                            items[idx] = { ...items[idx], photo: null };
+                            return { ...f, items };
+                          });
+                        }}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1.5 hover:bg-red-600 transition-colors shadow-sm"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2">
+                        <p className="text-white text-xs truncate">{it.photo.name}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
             <div>
-              <button type="button" onClick={() => setForm(f => ({ ...f, items: [...(f.items || []), { title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good' }] }))} className="px-3 py-1 rounded bg-sky-600 text-white">Add item</button>
+              <button type="button" onClick={() => setForm(f => ({ ...f, items: [...(f.items || []), { title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good', photo: null }] }))} className="px-3 py-1 rounded bg-sky-600 text-white">Add item</button>
             </div>
           </div>
 
