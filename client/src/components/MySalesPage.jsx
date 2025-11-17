@@ -101,10 +101,7 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
               {
                 (() => {
                   const photos = l.photos || []
-                  const primary = photos.find(p => p.is_primary) || photos[0]
-                  let src = null
-                  if (primary && primary.url) src = primary.url.startsWith('/') ? (API_BASE + primary.url) : primary.url
-                  else if (l.image_url) src = l.image_url.startsWith('/') ? (API_BASE + l.image_url) : l.image_url
+                  const src = Array.isArray(photos) && photos.length > 0 ? photos[0] : l.image_url
                   return src ? (<img src={src} alt={l.title} className="w-full h-40 object-cover" />) : null
                 })()
               }
@@ -159,7 +156,6 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                   <button
                     onClick={async () => {
                       const photos = l.photos || []
-                      const primaryIdx = photos.findIndex(p => p.is_primary)
                       // Fetch items for this listing
                       let itemsData = []
                       try {
@@ -185,15 +181,17 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                         longitude: l.longitude ?? null,
                         replacePhotos: false,
                         files: [],
-                        primaryIndex: primaryIdx >= 0 ? primaryIdx : 0,
+                        existingPhotos: photos, // Array of URL strings
+                        primaryIndex: 0,
                         items: itemsData.length > 0 ? itemsData.map(it => ({
                           title: it.title || '',
                           description: it.description || '',
                           price: it.price != null ? String(it.price) : '',
                           category_id: it.category_id || '',
                           image_url: it.image_url || '',
-                          condition: it.condition || 'good'
-                        })) : [{ title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good' }]
+                          condition: it.condition || 'good',
+                          photo: null // for new photo uploads
+                        })) : [{ title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good', photo: null }]
                       })
                       setShowEdit(true)
                     }}
@@ -270,20 +268,37 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                   price: it.price === '' || it.price === null ? 0 : Number(it.price),
                   category_id: it.category_id ? Number(it.category_id) : null,
                   image_url: it.image_url || null,
-                  condition: it.condition || 'good'
+                  condition: it.condition || 'good',
+                  hasPhoto: !!it.photo // flag to indicate photo will be uploaded
                 }))
               }
 
               const replacing = !!editForm.replacePhotos
               const hasFiles = Array.isArray(editForm.files) && editForm.files.length > 0
+              const hasItemPhotos = (editForm.items || []).some(it => it.photo)
 
-              if (replacing && hasFiles) {
+              if ((replacing && hasFiles) || hasItemPhotos) {
                 const fd = new FormData()
                 Object.entries(baseFields).forEach(([k, v]) => {
-                  if (v !== undefined && v !== null && v !== '') fd.append(k, String(v))
+                  if (k === 'items') {
+                    fd.append('items', JSON.stringify(v))
+                  } else if (v !== undefined && v !== null && v !== '') {
+                    fd.append(k, String(v))
+                  }
                 })
-                fd.append('primaryIndex', String(editForm.primaryIndex || 0))
-                for (const f of editForm.files) fd.append('photos', f)
+                
+                if (replacing && hasFiles) {
+                  fd.append('primaryIndex', String(editForm.primaryIndex || 0))
+                  for (const f of editForm.files) fd.append('photos', f)
+                }
+                
+                // Append item photos with indexed field names
+                (editForm.items || []).forEach((it, idx) => {
+                  if (it.photo) {
+                    fd.append(`item_photo_${idx}`, it.photo)
+                  }
+                })
+                
                 res = await fetch(`${API_BASE}/api/listings/${id}`, {
                   method: 'PATCH',
                   credentials: 'include',
@@ -316,6 +331,18 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
               }
 
               if (!res.ok) throw new Error(d?.error || 'Update failed')
+              
+              // Reload items for the updated listing
+              try {
+                const itemsRes = await fetch(`${API_BASE}/api/listings/${editForm.id}/items`, { credentials: 'include' })
+                if (itemsRes.ok) {
+                  const items = await itemsRes.json()
+                  d.itemsLoaded = items
+                }
+              } catch (e) {
+                console.error('Failed to reload items after update:', e)
+              }
+              
               setListings(ls => ls.map(x => (x.id === editForm.id ? d : x)))
               toast.success('Listing updated')
               setShowEdit(false)
@@ -423,8 +450,29 @@ function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
                   <input value={it.description} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], description: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2" />
                 </div>
                 <div className="mt-2">
-                  <label className="block text-sm text-gray-700 mb-1">Image URL (optional)</label>
-                  <input value={it.image_url} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], image_url: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2" placeholder="https://..." />
+                  <label className="block text-sm text-gray-700 mb-1">Item Photo</label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-emerald-400 transition-colors cursor-pointer" onClick={() => document.getElementById(`edit-item-file-input-${idx}`).click()}>
+                    <input id={`edit-item-file-input-${idx}`} type="file" accept="image/*" className="hidden" onChange={e => { const file = e.target.files?.[0]; if (file) { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], photo: file, image_url: '' }; return { ...f, items } }); setItemErrors([]) } }} />
+                    {it.photo ? (
+                      <div className="relative">
+                        <img src={URL.createObjectURL(it.photo)} alt="Preview" className="max-h-32 mx-auto rounded" />
+                        <button type="button" onClick={e => { e.stopPropagation(); setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], photo: null }; return { ...f, items } }) }} className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 text-xs">×</button>
+                        <p className="text-xs text-gray-600 mt-1">{it.photo.name}</p>
+                      </div>
+                    ) : it.image_url ? (
+                      <div>
+                        <img src={it.image_url} alt="Current" className="max-h-32 mx-auto rounded mb-2" />
+                        <p className="text-xs text-gray-600">Click to replace</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                          <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <p className="mt-2 text-sm text-gray-600">Click to upload or drag and drop</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -434,24 +482,60 @@ function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
           </div>
 
           <div className="pt-2">
+            <div className="mb-3">
+              <label className="block text-sm text-gray-700 mb-2">Current Listing Photos</label>
+              {form.existingPhotos && form.existingPhotos.length > 0 ? (
+                <div className="grid grid-cols-4 gap-2">
+                  {form.existingPhotos.map((url, i) => (
+                    <div key={i} className="relative">
+                      <img src={url} alt={`Photo ${i + 1}`} className="w-full h-24 object-cover rounded" />
+                      {i === 0 && <span className="absolute bottom-0 left-0 bg-emerald-500 text-white text-xs px-1 rounded">Primary</span>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">No photos yet</p>
+              )}
+            </div>
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" checked={!!form.replacePhotos} onChange={e => setForm(f => ({ ...f, replacePhotos: e.target.checked }))} />
-              Replace photos
+              Replace listing photos
             </label>
-                    {form.replacePhotos && (
+            {form.replacePhotos && (
               <div className="mt-3 space-y-3">
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">Upload new photos</label>
-                  <input type="file" multiple accept="image/*" onChange={e => setForm(f => ({ ...f, files: Array.from(e.target.files || []) }))} />
-                  {Array.isArray(form.files) && form.files.length > 0 && (
-                    <div className="text-xs text-gray-600 mt-1">{form.files.length} file(s) selected</div>
-                  )}
+                  <label className="block text-sm text-gray-700 mb-2">Upload new listing photos</label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-emerald-400 transition-colors cursor-pointer" onClick={() => document.getElementById('edit-listing-file-input').click()}>
+                    <input id="edit-listing-file-input" type="file" multiple accept="image/*" className="hidden" onChange={e => setForm(f => ({ ...f, files: Array.from(e.target.files || []) }))} />
+                    {Array.isArray(form.files) && form.files.length > 0 ? (
+                      <div>
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                          {form.files.map((file, i) => (
+                            <div key={i} className="relative">
+                              <img src={URL.createObjectURL(file)} alt={`Preview ${i + 1}`} className="w-full h-24 object-cover rounded" />
+                              <button type="button" onClick={e => { e.stopPropagation(); setForm(f => ({ ...f, files: f.files.filter((_, idx) => idx !== i) })) }} className="absolute top-0 right-0 bg-red-500 text-white rounded-full p-1 text-xs">×</button>
+                              {form.primaryIndex === i && <span className="absolute bottom-0 left-0 bg-emerald-500 text-white text-xs px-1 rounded">Primary</span>}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-600">{form.files.length} file(s) selected</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                          <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        <p className="mt-2 text-sm text-gray-600">Click to upload or drag and drop</p>
+                        <p className="text-xs text-gray-500">PNG, JPG up to 10MB</p>
+                      </div>
+                    )}
+                  </div>
                   {Array.isArray(form.files) && form.files.length > 0 && (
                     <div className="mt-2">
-                      <label className="block text-sm text-gray-700 mb-1">Primary photo index</label>
+                      <label className="block text-sm text-gray-700 mb-1">Primary photo</label>
                       <select value={form.primaryIndex} onChange={e => setForm(f => ({ ...f, primaryIndex: Number(e.target.value) }))} className="border rounded px-2 py-1">
-                        {Array.from({ length: form.files.length }).map((_, i) => (
-                          <option key={i} value={i}>{i + 1}</option>
+                        {form.files.map((_, i) => (
+                          <option key={i} value={i}>Photo {i + 1}</option>
                         ))}
                       </select>
                     </div>

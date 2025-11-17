@@ -92,6 +92,9 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
       const hasItemPhotos = (form.items || []).some(it => it.photo)
       
       if (hasListingPhotos || hasItemPhotos) {
+        if (typeof FormData === 'undefined') {
+          throw new Error('FormData is not supported in this browser')
+        }
         const fd = new FormData()
         fd.append('title', form.title)
         fd.append('description', form.description)

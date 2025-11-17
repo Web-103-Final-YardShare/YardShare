@@ -15,6 +15,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [favorites, setFavorites] = useState([]);
+  const [savedItemsCount, setSavedItemsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   // Check if user is logged in on mount
@@ -38,15 +39,27 @@ export default function App() {
           });
           // Load initial favorites for the authenticated user
           try {
-            const favRes = await fetch(`${API_URL}/api/favorites`, { credentials: 'include' });
+            const [favRes, itemsRes] = await Promise.all([
+              fetch(`${API_URL}/api/favorites`, { credentials: 'include' }),
+              fetch(`${API_URL}/api/favorites/items`, { credentials: 'include' })
+            ]);
+            
             if (favRes.ok) {
               const favData = await favRes.json();
               setFavorites(Array.isArray(favData) ? favData.map(l => l.id) : []);
             } else {
               setFavorites([]);
             }
+            
+            if (itemsRes.ok) {
+              const itemsData = await itemsRes.json();
+              setSavedItemsCount(Array.isArray(itemsData) ? itemsData.length : 0);
+            } else {
+              setSavedItemsCount(0);
+            }
           } catch {
             setFavorites([]);
+            setSavedItemsCount(0);
           }
         } else {
           setIsAuthenticated(false);
@@ -113,6 +126,7 @@ export default function App() {
     setIsAuthenticated(false);
     setUser(null);
     setFavorites([]);
+    setSavedItemsCount(0);
   };
   
 
@@ -139,6 +153,7 @@ export default function App() {
               isAuthenticated={isAuthenticated}
               user={user}
               favorites={favorites}
+              savedItemsCount={savedItemsCount}
               toggleFavorite={toggleFavorite}
               onLogout={handleLogout}
             />
@@ -156,6 +171,7 @@ export default function App() {
                 isAuthenticated={isAuthenticated}
                 user={user}
                 favorites={favorites}
+                savedItemsCount={savedItemsCount}
                 onLogout={handleLogout}
               />
             ) : (
@@ -170,7 +186,7 @@ export default function App() {
               <CreateSalePage 
                 isAuthenticated={isAuthenticated}
                 user={user}
-                favoritesCount={favorites.length}
+                favoritesCount={favorites.length + savedItemsCount}
                 onLogout={handleLogout}
               />
             ) : (
@@ -185,7 +201,7 @@ export default function App() {
               <ProfilePage 
                 isAuthenticated={isAuthenticated}
                 user={user}
-                favoritesCount={favorites.length}
+                favoritesCount={favorites.length + savedItemsCount}
                 onLogout={handleLogout}
               />
             ) : (
@@ -200,7 +216,7 @@ export default function App() {
               <MySalesPage 
                 isAuthenticated={isAuthenticated}
                 user={user}
-                favoritesCount={favorites.length}
+                favoritesCount={favorites.length + savedItemsCount}
                 onLogout={handleLogout}
               />
             ) : (
@@ -214,7 +230,7 @@ export default function App() {
             <ListingDetailPage 
               isAuthenticated={isAuthenticated}
               user={user}
-              favoritesCount={favorites.length}
+              favoritesCount={favorites.length + savedItemsCount}
               onLogout={handleLogout}
             />
           } 

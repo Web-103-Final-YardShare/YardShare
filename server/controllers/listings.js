@@ -129,7 +129,7 @@ const getListing = async (req, res) => {
         ) AS checked_in_users,
         /* Check-in count */
         COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
-        /* Photos */
+        /* Photos as array of URLs */
         l.photo_urls as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
@@ -183,27 +183,28 @@ const createListing = async (req, res) => {
 
     const listing = results.rows[0]
 
-    // If files uploaded, upload to Cloudinary and insert photo records
+    // If files uploaded, upload to Cloudinary and store URLs in photo_urls array
     // Filter only files with fieldname 'photos' (listing photos)
     const allFiles = req.files || []
     const listingPhotoFiles = allFiles.filter(f => f.fieldname === 'photos')
+    const uploadedPhotoUrls = []
     if (listingPhotoFiles.length > 0) {
-      const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
       for (let i = 0; i < listingPhotoFiles.length; i++) {
         const f = listingPhotoFiles[i]
-        const isPrimary = i === primaryIdx
         try {
           const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
           const url = result.secure_url || result.url
-          await pool.query(
-            `INSERT INTO listing_photos (listing_id, url, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [listing.id, url, f.mimetype, isPrimary, i]
-          )
+          uploadedPhotoUrls.push(url)
         } catch (uploadErr) {
           console.error('Cloudinary upload failed:', uploadErr)
           throw uploadErr
         }
       }
+      // Update listing with photo URLs
+      await pool.query(
+        `UPDATE listings SET photo_urls = $1 WHERE id = $2`,
+        [uploadedPhotoUrls, listing.id]
+      )
     }
 
     // If items were provided (JSON array or stringified JSON), insert them into `items` table
@@ -257,7 +258,7 @@ const createListing = async (req, res) => {
             }
             
             await pool.query(`
-              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+              INSERT INTO items (listing_id, category, title, description, price, condition, image_url, display_order)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             `, [listing.id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
           }
@@ -269,21 +270,11 @@ const createListing = async (req, res) => {
       throw innerErr
     }
 
-    // Return listing with photos
-    const withPhotos = await pool.query(`
-      SELECT 
-        l.*, 
-        COALESCE(
-          json_agg(
-            json_build_object('id', p.id, 'url', p.url, 'is_primary', p.is_primary, 'position', p.position)
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
-      FROM listings l
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
-      WHERE l.id = $1
-      GROUP BY l.id
-    `, [listing.id])
+    // Return listing with photos from photo_urls
+    const withPhotos = await pool.query(
+      `SELECT * FROM listings WHERE id = $1`,
+      [listing.id]
+    )
     
     await pool.query('COMMIT')
     res.status(201).json(withPhotos.rows[0])
@@ -335,38 +326,41 @@ const updateListing = async (req, res) => {
 
     const updated = results.rows[0]
 
-    // If photos provided (URLs) or files uploaded, replace photos
-    const filesUpd = req.files || []
-    if (Array.isArray(photos) || filesUpd.length > 0) {
-      await pool.query('DELETE FROM listing_photos WHERE listing_id = $1', [id])
-      const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
-      if (Array.isArray(photos)) {
-        for (let i = 0; i < photos.length; i++) {
-          const url = photos[i]
-          const isPrimary = i === primaryIdx
-          await pool.query(
-            `INSERT INTO listing_photos (listing_id, url, is_primary, position) VALUES ($1, $2, $3, $4)`,
-            [id, url, isPrimary, i]
-          )
-        }
+    // If photos provided (URLs) or files uploaded, replace photos in photo_urls array
+    // ONLY process files with fieldname "photos" for listing photos, not item photos
+    const allFiles = req.files || []
+    const listingPhotoFiles = Array.isArray(allFiles) 
+      ? allFiles.filter(f => f.fieldname === 'photos')
+      : []
+    
+    if (Array.isArray(photos) || listingPhotoFiles.length > 0) {
+      const uploadedPhotoUrls = []
+      
+      // If photo URLs provided directly, use them
+      if (Array.isArray(photos) && photos.length > 0) {
+        uploadedPhotoUrls.push(...photos)
       }
-      if (filesUpd.length > 0) {
-        for (let i = 0; i < filesUpd.length; i++) {
-          const f = filesUpd[i]
-          const isPrimary = i === primaryIdx
+      
+      // Upload new files to Cloudinary
+      if (listingPhotoFiles.length > 0) {
+        for (let i = 0; i < listingPhotoFiles.length; i++) {
+          const f = listingPhotoFiles[i]
           try {
             const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
             const url = result.secure_url || result.url
-            await pool.query(
-              `INSERT INTO listing_photos (listing_id, url, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-              [id, url, f.mimetype, isPrimary, i]
-            )
+            uploadedPhotoUrls.push(url)
           } catch (uploadErr) {
             console.error('Cloudinary upload failed during update:', uploadErr)
             throw uploadErr
           }
         }
       }
+      
+      // Update photo_urls array in listings table
+      await pool.query(
+        `UPDATE listings SET photo_urls = $1 WHERE id = $2`,
+        [uploadedPhotoUrls, id]
+      )
     }
     
     // If items provided (JSON array or stringified JSON), replace items
@@ -398,9 +392,31 @@ const updateListing = async (req, res) => {
               ve.status = 400
               throw ve
             }
-            const itemImage = it.image_url || null
+            
+            // Check if item has photo uploaded
+            let itemImage = it.image_url || null
+            if (it.hasPhoto && req.files) {
+              // Look for item_photo_{i} in req.files
+              const itemPhotoField = `item_photo_${i}`
+              const itemPhotoFile = Array.isArray(req.files) 
+                ? req.files.find(f => f.fieldname === itemPhotoField)
+                : req.files[itemPhotoField]?.[0]
+                
+              if (itemPhotoFile) {
+                try {
+                  const result = await uploadBufferToCloudinary(itemPhotoFile.buffer, { 
+                    folder: process.env.CLOUDINARY_FOLDER ? `${process.env.CLOUDINARY_FOLDER}/items` : 'yardshare/items' 
+                  })
+                  itemImage = result.secure_url || result.url
+                } catch (uploadErr) {
+                  console.error(`Failed to upload item photo ${i}:`, uploadErr)
+                  // Continue without image
+                }
+              }
+            }
+            
             await pool.query(`
-              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+              INSERT INTO items (listing_id, category, title, description, price, condition, image_url, display_order)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             `, [id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
           }
@@ -411,25 +427,10 @@ const updateListing = async (req, res) => {
       throw innerErr
     }
 
-    const withPhotos = await pool.query(`
-      SELECT 
-        l.*, 
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', p.id,
-              'url', CASE WHEN COALESCE(p.url, '') <> '' THEN p.url ELSE '/api/listings/' || l.id || '/photos/' || p.id END,
-              'is_primary', p.is_primary,
-              'position', p.position
-            )
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
-      FROM listings l
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
-      WHERE l.id = $1
-      GROUP BY l.id
-    `, [id])
+    const withPhotos = await pool.query(
+      `SELECT * FROM listings WHERE id = $1`,
+      [id]
+    )
 
     res.status(200).json(withPhotos.rows[0])
   } catch (error) {
@@ -477,21 +478,10 @@ const getSellerListings = async (req, res) => {
         l.*, 
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', p.id,
-              'url', CASE WHEN COALESCE(p.url, '') <> '' THEN p.url ELSE '/api/listings/' || l.id || '/photos/' || p.id END,
-              'is_primary', p.is_primary,
-              'position', p.position
-            )
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
+        l.photo_urls as photos
       FROM listings l
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
       LEFT JOIN items i ON i.listing_id = l.id
-      LEFT JOIN categories c ON i.category_id = c.id
+      LEFT JOIN categories c ON i.category::INTEGER = c.id
       WHERE l.seller_id = $1
       GROUP BY l.id
       ORDER BY l.created_at DESC
@@ -504,25 +494,8 @@ const getSellerListings = async (req, res) => {
   }
 }
 
-// GET binary photo handler
-const getListingPhoto = async (req, res) => {
-  try {
-    const listingId = parseInt(req.params.listingId)
-    const photoId = parseInt(req.params.photoId)
-    const q = await pool.query(
-      `SELECT data, mime_type FROM listing_photos WHERE id = $1 AND listing_id = $2 LIMIT 1`,
-      [photoId, listingId]
-    )
-    if (q.rows.length === 0 || !q.rows[0].data) {
-      return res.status(404).json({ error: 'Photo not found' })
-    }
-    const { data, mime_type } = q.rows[0]
-    res.set('Content-Type', mime_type || 'application/octet-stream')
-    res.send(data)
-  } catch (error) {
-    res.status(500).json({ error: error.message })
-  }
-}
+// Binary photo handler removed - using Cloudinary URLs instead
+// Photos are stored in photo_urls TEXT[] column
 
 // Custom non-RESTful route
 const getNearbyCount = async (req, res) => {
@@ -603,7 +576,6 @@ module.exports = {
   updateListing,
   deleteListing,
   getSellerListings,
-  getListingPhoto,
   getNearbyCount,
   checkInListing,
   uncheckInListing
