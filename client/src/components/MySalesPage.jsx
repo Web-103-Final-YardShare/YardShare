@@ -23,7 +23,24 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
       const res = await fetch(`${API_BASE}/api/listings/my-listings`, { credentials: 'include' })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Failed to load')
-      setListings(data)
+      
+      // Load items for each listing to show item photos
+      const listingsWithItems = await Promise.all(
+        data.map(async (listing) => {
+          try {
+            const itemsRes = await fetch(`${API_BASE}/api/listings/${listing.id}/items`, { credentials: 'include' })
+            if (itemsRes.ok) {
+              const items = await itemsRes.json()
+              return { ...listing, itemsLoaded: items }
+            }
+          } catch (e) {
+            console.error(`Failed to load items for listing ${listing.id}:`, e)
+          }
+          return listing
+        })
+      )
+      
+      setListings(listingsWithItems)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -61,29 +78,56 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
 
   const content = !isAuthenticated ? (
     <div className="min-h-[60vh] flex items-center justify-center">
-      <p className="text-gray-600">Please login to view your listings.</p>
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold text-gray-900 mb-2">Please log in</h2>
+        <p className="text-gray-600">You need to be logged in to view your listings.</p>
+      </div>
     </div>
   ) : (
     <div className="max-w-7xl mx-auto px-6 py-8">
-        <h1 className="text-2xl mb-4">My Yard Sales</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 mb-6">My Yard Sales</h1>
         {loading && <LoadingSpinner text="Loading your listings..." />}
-        {error && <p className="text-red-600">{error}</p>}
-        {!loading && listings.length === 0 && <p className="text-gray-600">No listings yet. Create one!</p>}
+        {error && <div className="p-4 bg-red-50 text-red-700 border border-red-200 rounded-lg">{error}</div>}
+        {!loading && !error && listings.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-gray-600 mb-4">No listings yet. Create one!</p>
+            <a href="/create" className="inline-block px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Create Listing</a>
+          </div>
+        )}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {listings.map(l => (
             <div key={l.id} className="border rounded-lg overflow-hidden bg-white">
-              {l.image_url && (
-                <img src={l.image_url.startsWith('/') ? (API_BASE + l.image_url) : l.image_url} alt={l.title} className="w-full h-40 object-cover" />
-              )}
+              {
+                (() => {
+                  const photos = l.photos || []
+                  const primary = photos.find(p => p.is_primary) || photos[0]
+                  let src = null
+                  if (primary && primary.url) src = primary.url.startsWith('/') ? (API_BASE + primary.url) : primary.url
+                  else if (l.image_url) src = l.image_url.startsWith('/') ? (API_BASE + l.image_url) : l.image_url
+                  return src ? (<img src={src} alt={l.title} className="w-full h-40 object-cover" />) : null
+                })()
+              }
               <div className="p-4">
                 <h3 className="font-medium text-gray-900">{l.title}</h3>
-                <p className="text-sm text-gray-600 mb-2">{l.category_name || 'Uncategorized'}</p>
-                <p className="text-gray-800 mb-2">{l.price ? `$${l.price}` : 'Free / negotiable'}</p>
+                <p className="text-sm text-gray-600 mb-2">{l.location || 'No location'}</p>
+                {l.item_count > 0 && (
+                  <p className="text-sm text-gray-500 mb-2">{l.item_count} item{l.item_count !== 1 ? 's' : ''}</p>
+                )}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {(l.photos || []).map((p, i) => (
-                    <img key={i} src={p.url} alt="photo" className={`w-12 h-12 object-cover rounded ${p.is_primary ? 'ring-2 ring-emerald-500' : ''}`} />
-                  ))}
+                  {(() => {
+                    // Show item photos if available
+                    const itemsWithPhotos = (l.itemsLoaded || []).filter(item => item.image_url)
+                    if (itemsWithPhotos.length > 0) {
+                      return itemsWithPhotos.slice(0, 4).map((item, i) => (
+                        <img key={i} src={item.image_url} alt={item.title} className="w-12 h-12 object-cover rounded" title={item.title} />
+                      ))
+                    }
+                    // Fallback to listing photos
+                    return (l.photos || []).slice(0, 4).map((p, i) => (
+                      <img key={i} src={p.url} alt="photo" className={`w-12 h-12 object-cover rounded ${p.is_primary ? 'ring-2 ring-emerald-500' : ''}`} />
+                    ))
+                  })()}
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Simple edit: toggle availability */}
@@ -96,12 +140,12 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
                           credentials: 'include',
-                          body: JSON.stringify({ is_available: !l.is_available })
+                          body: JSON.stringify({ is_active: !l.is_active })
                         })
                         const d = await res.json()
                         if (!res.ok) throw new Error(d?.error || 'Update failed')
                         setListings(ls => ls.map(x => (x.id === l.id ? d : x)))
-                        toast.success(d.is_available ? 'Marked as available' : 'Marked as unavailable')
+                        toast.success(d.is_active ? 'Marked as active' : 'Marked as inactive')
                       } catch (e) {
                         toast.error(e.message || 'Failed to update')
                       } finally {
@@ -110,24 +154,46 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                     }}
                     className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {updating[l.id] ? 'Updating...' : l.is_available ? 'Mark Unavailable' : 'Mark Available'}
+                    {updating[l.id] ? 'Updating...' : l.is_active ? 'Mark Inactive' : 'Mark Active'}
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
+                      const photos = l.photos || []
+                      const primaryIdx = photos.findIndex(p => p.is_primary)
+                      // Fetch items for this listing
+                      let itemsData = []
+                      try {
+                        const itemsRes = await fetch(`${API_BASE}/api/listings/${l.id}/items`, { credentials: 'include' })
+                        if (itemsRes.ok) {
+                          itemsData = await itemsRes.json()
+                        }
+                      } catch (e) {
+                        console.error('Failed to load items:', e)
+                      }
+                      // Store items in state for display
+                      setListings(ls => ls.map(x => x.id === l.id ? { ...x, itemsLoaded: itemsData } : x))
                       setEditForm({
                         id: l.id,
                         title: l.title || '',
                         description: l.description || '',
-                        price: typeof l.price === 'number' ? String(l.price) : '',
-                        category_id: l.category_id || '',
+                        sale_date: l.sale_date ? l.sale_date.split('T')[0] : '',
+                        start_time: l.start_time || '',
+                        end_time: l.end_time || '',
                         pickup_notes: l.pickup_notes || '',
                         location: l.location || '',
                         latitude: l.latitude ?? null,
                         longitude: l.longitude ?? null,
                         replacePhotos: false,
-                        photosUrls: [''],
                         files: [],
-                        primaryIndex: 0,
+                        primaryIndex: primaryIdx >= 0 ? primaryIdx : 0,
+                        items: itemsData.length > 0 ? itemsData.map(it => ({
+                          title: it.title || '',
+                          description: it.description || '',
+                          price: it.price != null ? String(it.price) : '',
+                          category_id: it.category_id || '',
+                          image_url: it.image_url || '',
+                          condition: it.condition || 'good'
+                        })) : [{ title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good' }]
                       })
                       setShowEdit(true)
                     }}
@@ -164,6 +230,26 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
               toast.error('Price must be a non-negative number')
               return
             }
+            // Validate items
+            const itemErrors = []
+            const allowedConditions = ['excellent', 'good', 'fair', 'poor']
+            ;(editForm.items || []).forEach((it, idx) => {
+              const itemErr = {}
+              if (!it.title || String(it.title).trim() === '') itemErr.title = 'Title is required'
+              const cond = it.condition ? String(it.condition).toLowerCase() : ''
+              if (!allowedConditions.includes(cond)) itemErr.condition = 'Condition is required'
+              if (it.price !== '' && it.price !== null && it.price !== undefined) {
+                const p = Number(it.price)
+                if (isNaN(p) || p < 0) itemErr.price = 'Price must be non-negative'
+              }
+              itemErrors[idx] = itemErr
+            })
+            const hasItemErrors = itemErrors.some(e => e && Object.keys(e).length > 0)
+            if (hasItemErrors) {
+              toast.error('Please fix item errors before saving')
+              return
+            }
+
             setSavingEdit(true)
             try {
               let res, d
@@ -171,17 +257,25 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
               const baseFields = {
                 title: editForm.title,
                 description: editForm.description,
-                price: editForm.price ? Number(editForm.price) : null,
-                category_id: editForm.category_id ? Number(editForm.category_id) : null,
+                sale_date: editForm.sale_date || null,
+                start_time: editForm.start_time || null,
+                end_time: editForm.end_time || null,
                 pickup_notes: editForm.pickup_notes,
                 location: editForm.location,
                 latitude: editForm.latitude,
                 longitude: editForm.longitude,
+                items: (editForm.items || []).map(it => ({
+                  title: it.title,
+                  description: it.description,
+                  price: it.price === '' || it.price === null ? 0 : Number(it.price),
+                  category_id: it.category_id ? Number(it.category_id) : null,
+                  image_url: it.image_url || null,
+                  condition: it.condition || 'good'
+                }))
               }
 
               const replacing = !!editForm.replacePhotos
               const hasFiles = Array.isArray(editForm.files) && editForm.files.length > 0
-              const hasUrls = Array.isArray(editForm.photosUrls) && editForm.photosUrls.filter(Boolean).length > 0
 
               if (replacing && hasFiles) {
                 const fd = new FormData()
@@ -196,11 +290,12 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                   body: fd
                 })
                 d = await res.json()
-              } else if (replacing && hasUrls) {
+              } else if (replacing && !hasFiles) {
+                // User requested to replace photos but didn't upload files: clear photos
                 const payload = {
                   ...baseFields,
-                  photos: editForm.photosUrls.filter(Boolean),
-                  primaryIndex: editForm.primaryIndex || 0,
+                  photos: [],
+                  primaryIndex: 0,
                 }
                 res = await fetch(`${API_BASE}/api/listings/${id}`, {
                   method: 'PATCH',
@@ -238,10 +333,11 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
 }
 
 function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
+  const [itemErrors, setItemErrors] = useState([])
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose} />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white w-full max-w-xl rounded-lg shadow p-6">
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-white w-full max-w-2xl rounded-lg shadow p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">Edit Listing</h2>
         <div className="space-y-4">
           <div>
@@ -252,19 +348,18 @@ function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
             <label className="block text-sm text-gray-700 mb-1">Description</label>
             <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full border rounded px-3 py-2" rows={4} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm text-gray-700 mb-1">Price</label>
-              <input type="number" min="0" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} className="w-full border rounded px-3 py-2" />
+              <label className="block text-sm text-gray-700 mb-1">Sale date</label>
+              <input type="date" value={form.sale_date} onChange={e => setForm(f => ({ ...f, sale_date: e.target.value }))} className="w-full border rounded px-3 py-2" />
             </div>
             <div>
-              <label className="block text-sm text-gray-700 mb-1">Category</label>
-              <select value={form.category_id} onChange={e => setForm(f => ({ ...f, category_id: e.target.value }))} className="w-full border rounded px-3 py-2">
-                <option value="">Select category</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <label className="block text-sm text-gray-700 mb-1">Start time</label>
+              <input type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} className="w-full border rounded px-3 py-2" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-1">End time</label>
+              <input type="time" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} className="w-full border rounded px-3 py-2" />
             </div>
           </div>
           <div>
@@ -279,46 +374,72 @@ function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
             />
           </div>
 
+          {/* Items section */}
+          <div className="pt-4">
+            <h3 className="font-semibold mb-2">Items (add one or more)</h3>
+            {(form.items || []).map((it, idx) => (
+              <div key={idx} className="mb-3 p-3 border rounded bg-gray-50">
+                <div className="flex justify-between items-center mb-2">
+                  <strong>Item {idx + 1}</strong>
+                  <button type="button" onClick={() => {
+                    setForm(f => ({ ...f, items: f.items.filter((_, i) => i !== idx) }))
+                  }} className="text-sm text-red-600">Remove</button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Title</label>
+                    <input value={it.title} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], title: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className={`w-full border rounded px-3 py-2 ${itemErrors[idx] && itemErrors[idx].title ? 'border-red-500' : ''}`} />
+                    {itemErrors[idx] && itemErrors[idx].title && <div className="text-xs text-red-600 mt-1">{itemErrors[idx].title}</div>}
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Price</label>
+                    <input type="number" min="0" step="0.01" value={it.price} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], price: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className={`w-full border rounded px-3 py-2 ${itemErrors[idx] && itemErrors[idx].price ? 'border-red-500' : ''}`} />
+                    {itemErrors[idx] && itemErrors[idx].price && <div className="text-xs text-red-600 mt-1">{itemErrors[idx].price}</div>}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Category</label>
+                    <select value={it.category_id} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], category_id: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2">
+                      <option value="">Select category</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Condition</label>
+                    <select value={it.condition} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], condition: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className={`w-full border rounded px-3 py-2 ${itemErrors[idx] && itemErrors[idx].condition ? 'border-red-500' : ''}`}>
+                      <option value="excellent">Excellent</option>
+                      <option value="good">Good</option>
+                      <option value="fair">Fair</option>
+                      <option value="poor">Poor</option>
+                    </select>
+                  </div>
+                  {itemErrors[idx] && itemErrors[idx].condition && <div className="col-span-2 text-xs text-red-600 mt-1">{itemErrors[idx].condition}</div>}
+                </div>
+                <div className="mt-2">
+                  <label className="block text-sm text-gray-700 mb-1">Description (optional)</label>
+                  <input value={it.description} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], description: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2" />
+                </div>
+                <div className="mt-2">
+                  <label className="block text-sm text-gray-700 mb-1">Image URL (optional)</label>
+                  <input value={it.image_url} onChange={e => { setForm(f => { const items = [...f.items]; items[idx] = { ...items[idx], image_url: e.target.value }; return { ...f, items } }); setItemErrors([]) }} className="w-full border rounded px-3 py-2" placeholder="https://..." />
+                </div>
+              </div>
+            ))}
+            <div>
+              <button type="button" onClick={() => setForm(f => ({ ...f, items: [...(f.items || []), { title: '', description: '', price: '', category_id: '', image_url: '', condition: 'good' }] }))} className="px-3 py-1 rounded bg-sky-600 text-white">Add item</button>
+            </div>
+          </div>
+
           <div className="pt-2">
             <label className="inline-flex items-center gap-2 text-sm">
               <input type="checkbox" checked={!!form.replacePhotos} onChange={e => setForm(f => ({ ...f, replacePhotos: e.target.checked }))} />
               Replace photos
             </label>
-            {form.replacePhotos && (
+                    {form.replacePhotos && (
               <div className="mt-3 space-y-3">
-                <div>
-                  <label className="block text-sm text-gray-700 mb-1">Photo URLs</label>
-                  <div className="space-y-2">
-                    {form.photosUrls.map((u, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <input
-                          value={u}
-                          onChange={e => setForm(f => {
-                            const arr = [...f.photosUrls]
-                            arr[idx] = e.target.value
-                            return { ...f, photosUrls: arr }
-                          })}
-                          placeholder="https://..."
-                          className="flex-1 border rounded px-3 py-2"
-                        />
-                        <input
-                          type="radio"
-                          name="primaryUrl"
-                          checked={form.primaryIndex === idx}
-                          onChange={() => setForm(f => ({ ...f, primaryIndex: idx }))}
-                          title="Primary"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setForm(f => ({ ...f, photosUrls: f.photosUrls.filter((_, i) => i !== idx) }))}
-                          className="px-2 py-1 border rounded text-sm"
-                        >Remove</button>
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => setForm(f => ({ ...f, photosUrls: [...(f.photosUrls || []), ''] }))} className="px-3 py-1 border rounded text-sm">+ Add URL</button>
-                  </div>
-                </div>
-
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">Upload new photos</label>
                   <input type="file" multiple accept="image/*" onChange={e => setForm(f => ({ ...f, files: Array.from(e.target.files || []) }))} />

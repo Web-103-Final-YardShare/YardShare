@@ -34,6 +34,7 @@ export function HomePage({ isAuthenticated, user, favorites, toggleFavorite, onL
           favorites={favorites}
           toggleFavorite={toggleFavorite}
           isAuthenticated={isAuthenticated}
+          user={user}
           location={location}
           distanceMiles={filters.distance}
         />
