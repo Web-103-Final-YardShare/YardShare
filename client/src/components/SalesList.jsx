@@ -4,7 +4,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorite, isAuthenticated, user, location, distanceMiles = 10 }) {
+export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorite, isAuthenticated, user, filters, location, distanceMiles = 10 }) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState([]);
   const radiusKm = useMemo(() => Math.max(1, Math.round(distanceMiles * 1.60934)), [distanceMiles]);
@@ -25,7 +25,9 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
         const res = await fetch(url, { credentials: 'include', signal: controller.signal });
         if (res.ok) {
           const data = await res.json();
-          setItems(data);
+          // Apply client-side filtering for categories and status (sidebar filter)
+          const filtered = applyFiltersToListings(data, { categories: filters?.categories || [], status: filters?.status || 'all' });
+          setItems(filtered);
         }
       } catch (e) {
         if (e.name !== 'AbortError') console.error('Failed to load listings', e);
@@ -35,7 +37,56 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
     };
     fetchListings();
     return () => controller.abort();
-  }, [searchQuery, location?.lat, location?.lng, radiusKm]);
+  }, [searchQuery, location?.lat, location?.lng, radiusKm, filters?.categories, filters?.status]);
+
+  // Apply client-side filters to a listings array
+  function applyFiltersToListings(listings, { categories, status }) {
+    return listings.filter(l => {
+      // Category filter: if categories selected, require at least one match
+      if (Array.isArray(categories) && categories.length > 0) {
+        const itemCats = (l.item_categories || []).map(c => String(c));
+        const has = categories.some(cat => itemCats.includes(cat));
+        if (!has) return false;
+      }
+
+      // Status filter: 'all', 'happening', 'upcoming'
+      if (status && status !== 'all') {
+        const listStatus = computeListingStatus(l);
+        if (status === 'happening' && listStatus !== 'now') return false;
+        if (status === 'upcoming' && listStatus !== 'upcoming') return false;
+      }
+
+      return true;
+    });
+  }
+
+  // Compute listing status similar to SaleCard logic
+  function computeListingStatus(l) {
+    try {
+      const saleDate = new Date(l.sale_date);
+      if (isNaN(saleDate.getTime())) return 'upcoming';
+      const now = new Date();
+      const today = now.toISOString().slice(0, 10);
+      const saleDateStr = saleDate.toISOString().slice(0, 10);
+      if (saleDateStr === today) {
+        if (l.start_time && l.end_time) {
+          const [sh, sm] = l.start_time.split(':').map(Number);
+          const [eh, em] = l.end_time.split(':').map(Number);
+          const current = now.getHours() * 60 + now.getMinutes();
+          const start = sh * 60 + sm;
+          const end = eh * 60 + em;
+          if (current >= start && current <= end) return 'now';
+          if (current > end) return 'ended';
+          return 'upcoming';
+        }
+        return 'now';
+      }
+      if (saleDate < now) return 'ended';
+      return 'upcoming';
+    } catch (e) {
+      return 'upcoming';
+    }
+  }
 
   return (
     <div className="w-96 bg-white border-r border-gray-200 overflow-y-auto">
