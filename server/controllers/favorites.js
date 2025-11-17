@@ -1,7 +1,7 @@
 const pool = require('../db/pool')
 
 // GET user's favorites
-const getUserFavorites = async (req, res) => {
+const getUserListingFavorites = async (req, res) => {
   try {
     const user_id = req.user ? req.user.id : null
     if (!user_id) {
@@ -31,7 +31,7 @@ const addFavorite = async (req, res) => {
       return res.status(401).json({ error: 'Must be logged in' })
     }
     
-    const listing_id = parseInt(req.params.listing_id)
+    const listing_id = parseInt(req.params.listingId)
     
     // Check if already favorited
     const existing = await pool.query(
@@ -62,7 +62,7 @@ const removeFavorite = async (req, res) => {
       return res.status(401).json({ error: 'Must be logged in' })
     }
     
-    const listing_id = parseInt(req.params.listing_id)
+    const listing_id = parseInt(req.params.listingId)
     
     await pool.query(
       'DELETE FROM favorites WHERE user_id = $1 AND listing_id = $2',
@@ -75,8 +75,59 @@ const removeFavorite = async (req, res) => {
   }
 }
 
+// GET user's saved item ids / item details
+const getUserItemFavorites = async (req, res) => {
+  try {
+    const user_id = req.user ? req.user.id : null
+    if (!user_id) return res.status(401).json({ error: 'Must be logged in' })
+
+    const u = await pool.query('SELECT favorite_item_ids FROM users WHERE id = $1', [user_id])
+    const favIds = (u.rows[0] && u.rows[0].favorite_item_ids) || []
+    if (!favIds || favIds.length === 0) return res.status(200).json([])
+
+    const q = await pool.query(`SELECT items.*, listings.title as sale_title, listings.location as sale_location FROM items JOIN listings ON items.listing_id = listings.id WHERE items.id = ANY($1)`, [favIds])
+    res.status(200).json(q.rows)
+  } catch (error) {
+    console.error('Error in getUserItemFavorites:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+// POST add item favorite (stores item id in users.favorite_item_ids array)
+const addItemFavorite = async (req, res) => {
+  try {
+    const user_id = req.user ? req.user.id : null
+    if (!user_id) return res.status(401).json({ error: 'Must be logged in' })
+    const itemId = parseInt(req.params.itemId)
+
+    await pool.query(`UPDATE users SET favorite_item_ids = CASE WHEN favorite_item_ids @> ARRAY[$1]::INTEGER[] THEN favorite_item_ids ELSE array_append(favorite_item_ids, $1) END WHERE id = $2`, [itemId, user_id])
+    res.status(200).json({ ok: true })
+  } catch (error) {
+    console.error('Error in addItemFavorite:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+// DELETE remove item favorite
+const removeItemFavorite = async (req, res) => {
+  try {
+    const user_id = req.user ? req.user.id : null
+    if (!user_id) return res.status(401).json({ error: 'Must be logged in' })
+    const itemId = parseInt(req.params.itemId)
+
+    await pool.query(`UPDATE users SET favorite_item_ids = array_remove(favorite_item_ids, $1) WHERE id = $2`, [itemId, user_id])
+    res.status(200).json({ ok: true })
+  } catch (error) {
+    console.error('Error in removeItemFavorite:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
 module.exports = {
-  getUserFavorites,
+  getUserListingFavorites,
   addFavorite,
-  removeFavorite
+  removeFavorite,
+  getUserItemFavorites,
+  addItemFavorite,
+  removeItemFavorite
 }
