@@ -1,4 +1,28 @@
 const pool = require('../db/pool')
+const cloudinary = require('cloudinary').v2
+const streamifier = require('streamifier')
+
+// Configure Cloudinary from environment variables. Set CLOUDINARY_URL or the individual vars.
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({ secure: true })
+} else if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  })
+}
+
+const uploadBufferToCloudinary = (buffer, options = {}) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(options, (err, result) => {
+      if (err) return reject(err)
+      resolve(result)
+    })
+    streamifier.createReadStream(buffer).pipe(uploadStream)
+  })
+}
 
 // GET all listings
 const getAllListings = async (req, res) => {
@@ -27,30 +51,22 @@ const getAllListings = async (req, res) => {
         /* Count unsold items */
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
-        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
-        /* Checked-in users and count */
+        ARRAY_AGG(DISTINCT i.category) FILTER (WHERE i.category IS NOT NULL) as item_categories,
+        /* Checked-in users from attendee_ids array */
         COALESCE(
-          json_agg(DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)) FILTER (WHERE au.id IS NOT NULL), '[]'
+          (
+            SELECT json_agg(jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl))
+            FROM users au
+            WHERE au.id = ANY(l.attendee_ids)
+          ), '[]'
         ) AS checked_in_users,
-        COUNT(DISTINCT a.user_id) AS check_in_count,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', p.id,
-              'url', CASE WHEN COALESCE(p.url, '') <> '' THEN p.url ELSE '/api/listings/' || l.id || '/photos/' || p.id END,
-              'is_primary', p.is_primary,
-              'position', p.position
-            )
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
+        /* Check-in count */
+        COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
+        /* Photos */
+        l.photo_urls as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
-      LEFT JOIN checkins a ON a.listing_id = l.id
-      LEFT JOIN users au ON au.id = a.user_id
       LEFT JOIN items i ON i.listing_id = l.id
-      LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.is_active = true
       AND (
         /* Text search */
@@ -93,7 +109,7 @@ const getAllListings = async (req, res) => {
 // GET single listing
 const getListing = async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.listingId)
     const results = await pool.query(`
       SELECT 
         l.*, 
@@ -102,30 +118,22 @@ const getListing = async (req, res) => {
         /* Count unsold items */
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
-        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
-        /* Checked-in users and count */
+        ARRAY_AGG(DISTINCT i.category) FILTER (WHERE i.category IS NOT NULL) as item_categories,
+        /* Checked-in users from attendee_ids array */
         COALESCE(
-          json_agg(DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)) FILTER (WHERE au.id IS NOT NULL), '[]'
+          (
+            SELECT json_agg(jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl))
+            FROM users au
+            WHERE au.id = ANY(l.attendee_ids)
+          ), '[]'
         ) AS checked_in_users,
-        COUNT(DISTINCT a.user_id) AS check_in_count,
-        COALESCE(
-          json_agg(
-            json_build_object(
-              'id', p.id,
-              'url', CASE WHEN COALESCE(p.url, '') <> '' THEN p.url ELSE '/api/listings/' || l.id || '/photos/' || p.id END,
-              'is_primary', p.is_primary,
-              'position', p.position
-            )
-            ORDER BY p.is_primary DESC, p.position ASC, p.id ASC
-          ) FILTER (WHERE p.id IS NOT NULL), '[]'
-        ) AS photos
+        /* Check-in count */
+        COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
+        /* Photos */
+        l.photo_urls as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
-      LEFT JOIN checkins a ON a.listing_id = l.id
-      LEFT JOIN users au ON au.id = a.user_id
-      LEFT JOIN listing_photos p ON p.listing_id = l.id
       LEFT JOIN items i ON i.listing_id = l.id
-      LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.id = $1
       GROUP BY l.id, u.username, u.avatarurl
     `, [id])
@@ -144,7 +152,7 @@ const getListing = async (req, res) => {
 // POST new listing
 const createListing = async (req, res) => {
   try {
-    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex } = req.body
+    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex, items } = req.body
     const seller_id = req.user ? req.user.id : null
     
     if (!seller_id) {
@@ -165,6 +173,8 @@ const createListing = async (req, res) => {
       return res.status(400).json({ error: 'Invalid longitude' })
     }
     
+    // Use a transaction so listing, photos, and items are inserted atomically
+    await pool.query('BEGIN')
     const results = await pool.query(`
       INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
@@ -173,31 +183,66 @@ const createListing = async (req, res) => {
 
     const listing = results.rows[0]
 
-    // If URL photos provided, insert them and set primary
-    if (Array.isArray(photos) && photos.length > 0) {
-      const primaryIdx = Number.isInteger(primaryIndex) ? primaryIndex : 0
-      for (let i = 0; i < photos.length; i++) {
-        const url = photos[i]
-        const isPrimary = i === primaryIdx
-        await pool.query(
-          `INSERT INTO listing_photos (listing_id, url, is_primary, position) VALUES ($1, $2, $3, $4)`,
-          [listing.id, url, isPrimary, i]
-        )
-      }
-    }
-
-    // If files uploaded set primary
+    // If files uploaded, upload to Cloudinary and insert photo records
     const files = req.files || []
     if (files.length > 0) {
       const primaryIdx = Number.isInteger(parseInt(primaryIndex)) ? parseInt(primaryIndex) : 0
       for (let i = 0; i < files.length; i++) {
         const f = files[i]
         const isPrimary = i === primaryIdx
-        await pool.query(
-          `INSERT INTO listing_photos (listing_id, data, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-          [listing.id, f.buffer, f.mimetype, isPrimary, i]
-        )
+        try {
+          const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
+          const url = result.secure_url || result.url
+          await pool.query(
+            `INSERT INTO listing_photos (listing_id, url, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+            [listing.id, url, f.mimetype, isPrimary, i]
+          )
+        } catch (uploadErr) {
+          console.error('Cloudinary upload failed:', uploadErr)
+          throw uploadErr
+        }
       }
+    }
+
+    // If items were provided (JSON array or stringified JSON), insert them into `items` table
+    try {
+      if (items) {
+        let parsed = items
+        if (typeof items === 'string') {
+          try {
+            parsed = JSON.parse(items)
+          } catch (e) {
+            parsed = []
+          }
+        }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const allowedConditions = ['excellent', 'good', 'fair', 'poor']
+          for (let i = 0; i < parsed.length; i++) {
+            const it = parsed[i] || {}
+            const itemTitle = it.title ? String(it.title).trim() : ''
+            if (!itemTitle) continue // skip empty items
+            const itemDescription = it.description || ''
+            const itemPrice = (it.price !== undefined && it.price !== null && it.price !== '') ? Number(it.price) : 0.00
+            const itemCategory = it.category_id ? Number(it.category_id) : null
+            const rawCondition = it.condition !== undefined && it.condition !== null ? String(it.condition) : null
+            const itemCondition = rawCondition ? String(rawCondition).toLowerCase() : null
+            if (!itemCondition || !allowedConditions.includes(itemCondition)) {
+              const ve = new Error(`Invalid item condition for item ${i + 1}: ${rawCondition}`)
+              ve.status = 400
+              throw ve
+            }
+            const itemImage = it.image_url || null
+            await pool.query(`
+              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [listing.id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
+          }
+        }
+      }
+    } catch (innerErr) {
+      console.error('Error inserting items for listing:', innerErr)
+      // Rollback will happen below in outer catch
+      throw innerErr
     }
 
     // Return listing with photos
@@ -216,18 +261,25 @@ const createListing = async (req, res) => {
       GROUP BY l.id
     `, [listing.id])
     
+    await pool.query('COMMIT')
     res.status(201).json(withPhotos.rows[0])
   } catch (error) {
     console.error('Error in createListing:', error)
-    res.status(409).json({ error: error.message })
+    try {
+      await pool.query('ROLLBACK')
+    } catch (rbErr) {
+      console.error('Rollback failed:', rbErr)
+    }
+    const status = error && (error.status || error.statusCode) ? (error.status || error.statusCode) : 409
+    res.status(status).json({ error: error.message })
   }
 }
 
 // PATCH update listing
 const updateListing = async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
-    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, photos, primaryIndex } = req.body
+    const id = parseInt(req.params.listingId)
+    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, is_available, photos, primaryIndex, items } = req.body
     
     // Check ownership
     const ownerCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [id])
@@ -238,6 +290,9 @@ const updateListing = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this listing' })
     }
     
+    // Support frontend `is_available` field (maps to `is_active` in DB)
+    const finalIsActive = (is_active !== undefined) ? is_active : (is_available !== undefined ? is_available : null)
+
     const results = await pool.query(`
       UPDATE listings
       SET title = COALESCE($1, title),
@@ -252,7 +307,7 @@ const updateListing = async (req, res) => {
           is_active = COALESCE($10, is_active)
       WHERE id = $11
       RETURNING *
-    `, [title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, id])
+    `, [title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, finalIsActive, id])
 
     const updated = results.rows[0]
 
@@ -275,12 +330,61 @@ const updateListing = async (req, res) => {
         for (let i = 0; i < filesUpd.length; i++) {
           const f = filesUpd[i]
           const isPrimary = i === primaryIdx
-          await pool.query(
-            `INSERT INTO listing_photos (listing_id, data, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-            [id, f.buffer, f.mimetype, isPrimary, i]
-          )
+          try {
+            const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
+            const url = result.secure_url || result.url
+            await pool.query(
+              `INSERT INTO listing_photos (listing_id, url, mime_type, is_primary, position) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+              [id, url, f.mimetype, isPrimary, i]
+            )
+          } catch (uploadErr) {
+            console.error('Cloudinary upload failed during update:', uploadErr)
+            throw uploadErr
+          }
         }
       }
+    }
+    
+    // If items provided (JSON array or stringified JSON), replace items
+    try {
+      if (items !== undefined) {
+        let parsed = items
+        if (typeof items === 'string') {
+          try {
+            parsed = JSON.parse(items)
+          } catch (e) {
+            parsed = []
+          }
+        }
+        if (Array.isArray(parsed)) {
+          // Delete existing items for listing and insert the provided ones in order
+          await pool.query('DELETE FROM items WHERE listing_id = $1', [id])
+          const allowedConditions = ['excellent', 'good', 'fair', 'poor']
+          for (let i = 0; i < parsed.length; i++) {
+            const it = parsed[i] || {}
+            const itemTitle = it.title ? String(it.title).trim() : ''
+            if (!itemTitle) continue // skip empty items
+            const itemDescription = it.description || ''
+            const itemPrice = (it.price !== undefined && it.price !== null && it.price !== '') ? Number(it.price) : 0.00
+            const itemCategory = it.category_id ? Number(it.category_id) : null
+            const rawCondition = it.condition !== undefined && it.condition !== null ? String(it.condition) : null
+            const itemCondition = rawCondition ? String(rawCondition).toLowerCase() : null
+            if (!itemCondition || !allowedConditions.includes(itemCondition)) {
+              const ve = new Error(`Invalid item condition for item ${i + 1}: ${rawCondition}`)
+              ve.status = 400
+              throw ve
+            }
+            const itemImage = it.image_url || null
+            await pool.query(`
+              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `, [id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
+          }
+        }
+      }
+    } catch (innerErr) {
+      console.error('Error updating items for listing:', innerErr)
+      throw innerErr
     }
 
     const withPhotos = await pool.query(`
@@ -313,7 +417,7 @@ const updateListing = async (req, res) => {
 // DELETE listing
 const deleteListing = async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.listingId)
     
     // Check ownership
     const ownerCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [id])
@@ -379,7 +483,7 @@ const getSellerListings = async (req, res) => {
 // GET binary photo handler
 const getListingPhoto = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.id)
+    const listingId = parseInt(req.params.listingId)
     const photoId = parseInt(req.params.photoId)
     const q = await pool.query(
       `SELECT data, mime_type FROM listing_photos WHERE id = $1 AND listing_id = $2 LIMIT 1`,
@@ -436,12 +540,12 @@ const getNearbyCount = async (req, res) => {
 // POST check-in
 const checkInListing = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.id)
+    const listingId = parseInt(req.params.listingId)
     const userId = req.user ? req.user.id : null
     if (!userId) return res.status(401).json({ error: 'Must be logged in to check in' })
 
     await pool.query(
-      `INSERT INTO checkins (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      `UPDATE listings SET attendee_ids = array_append(attendee_ids, $1) WHERE id = $2 AND NOT ($1 = ANY(attendee_ids))`,
       [userId, listingId]
     )
 
@@ -455,11 +559,11 @@ const checkInListing = async (req, res) => {
 // DELETE check-in
 const uncheckInListing = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.id)
+    const listingId = parseInt(req.params.listingId)
     const userId = req.user ? req.user.id : null
     if (!userId) return res.status(401).json({ error: 'Must be logged in to un-check in' })
 
-    await pool.query(`DELETE FROM checkins WHERE user_id = $1 AND listing_id = $2`, [userId, listingId])
+    await pool.query(`UPDATE listings SET attendee_ids = array_remove(attendee_ids, $1) WHERE id = $2`, [userId, listingId])
 
     res.status(200).json({ ok: true })
   } catch (error) {

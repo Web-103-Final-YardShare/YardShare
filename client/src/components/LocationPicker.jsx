@@ -109,16 +109,7 @@ export function LocationPicker({ value, onChange }) {
 
       <div ref={mapRef} className="h-64 w-full rounded overflow-hidden border" />
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm text-gray-700 mb-1">Latitude</label>
-          <input value={value?.latitude || ''} readOnly className="w-full border rounded px-3 py-2 bg-gray-50" />
-        </div>
-        <div>
-          <label className="block text-sm text-gray-700 mb-1">Longitude</label>
-          <input value={value?.longitude || ''} readOnly className="w-full border rounded px-3 py-2 bg-gray-50" />
-        </div>
-      </div>
+
     </div>
   )
 }
