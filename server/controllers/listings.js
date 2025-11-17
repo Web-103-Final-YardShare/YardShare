@@ -28,6 +28,11 @@ const getAllListings = async (req, res) => {
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
         ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
+        /* Checked-in users and count */
+        COALESCE(
+          json_agg(DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)) FILTER (WHERE au.id IS NOT NULL), '[]'
+        ) AS checked_in_users,
+        COUNT(DISTINCT a.user_id) AS check_in_count,
         COALESCE(
           json_agg(
             json_build_object(
@@ -42,6 +47,8 @@ const getAllListings = async (req, res) => {
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
       LEFT JOIN listing_photos p ON p.listing_id = l.id
+      LEFT JOIN checkins a ON a.listing_id = l.id
+      LEFT JOIN users au ON au.id = a.user_id
       LEFT JOIN items i ON i.listing_id = l.id
       LEFT JOIN categories c ON i.category_id = c.id
       WHERE l.is_active = true
@@ -96,6 +103,11 @@ const getListing = async (req, res) => {
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
         ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
+        /* Checked-in users and count */
+        COALESCE(
+          json_agg(DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)) FILTER (WHERE au.id IS NOT NULL), '[]'
+        ) AS checked_in_users,
+        COUNT(DISTINCT a.user_id) AS check_in_count,
         COALESCE(
           json_agg(
             json_build_object(
@@ -109,6 +121,8 @@ const getListing = async (req, res) => {
         ) AS photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
+      LEFT JOIN checkins a ON a.listing_id = l.id
+      LEFT JOIN users au ON au.id = a.user_id
       LEFT JOIN listing_photos p ON p.listing_id = l.id
       LEFT JOIN items i ON i.listing_id = l.id
       LEFT JOIN categories c ON i.category_id = c.id
@@ -419,6 +433,41 @@ const getNearbyCount = async (req, res) => {
   }
 }
 
+// POST check-in
+const checkInListing = async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id)
+    const userId = req.user ? req.user.id : null
+    if (!userId) return res.status(401).json({ error: 'Must be logged in to check in' })
+
+    await pool.query(
+      `INSERT INTO checkins (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [userId, listingId]
+    )
+
+    res.status(200).json({ ok: true })
+  } catch (error) {
+    console.error('Error in checkInListing:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
+// DELETE check-in
+const uncheckInListing = async (req, res) => {
+  try {
+    const listingId = parseInt(req.params.id)
+    const userId = req.user ? req.user.id : null
+    if (!userId) return res.status(401).json({ error: 'Must be logged in to un-check in' })
+
+    await pool.query(`DELETE FROM checkins WHERE user_id = $1 AND listing_id = $2`, [userId, listingId])
+
+    res.status(200).json({ ok: true })
+  } catch (error) {
+    console.error('Error in uncheckInListing:', error)
+    res.status(500).json({ error: error.message })
+  }
+}
+
 module.exports = {
   getAllListings,
   getListing,
@@ -427,5 +476,7 @@ module.exports = {
   deleteListing,
   getSellerListings,
   getListingPhoto,
-  getNearbyCount
+  getNearbyCount,
+  checkInListing,
+  uncheckInListing
 }

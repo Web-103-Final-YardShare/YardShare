@@ -7,7 +7,9 @@ const {
   deleteListing,
   getSellerListings,
   getListingPhoto,
-  getNearbyCount
+  getNearbyCount,
+  checkInListing,
+  uncheckInListing
 } = require('../controllers/listings')
 const multer = require('multer')
 
@@ -23,6 +25,9 @@ router.get('/my-listings', getSellerListings)
 router.get('/:id/photos/:photoId', getListingPhoto)
 router.get('/:id', getListing)
 router.post('/', upload.array('photos', 10), createListing)
+// Check-in endpoints
+router.post('/:id/checkin', checkInListing)
+router.delete('/:id/checkin', uncheckInListing)
 router.patch('/:id', upload.array('photos', 10), updateListing)
 router.delete('/:id', deleteListing)
 
