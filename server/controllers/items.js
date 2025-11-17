@@ -1,4 +1,28 @@
 const pool = require('../db/pool')
+const cloudinary = require('cloudinary').v2
+const streamifier = require('streamifier')
+
+// Configure Cloudinary from environment variables
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config({ secure: true })
+} else if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true
+  })
+}
+
+const uploadBufferToCloudinary = (buffer, options = {}) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(options, (err, result) => {
+      if (err) return reject(err)
+      resolve(result)
+    })
+    streamifier.createReadStream(buffer).pipe(uploadStream)
+  })
+}
 
 // GET single item with sale info
 const getItem = async (req, res) => {
@@ -115,12 +139,27 @@ const createItem = async (req, res) => {
     if (req.user && listingCheck.rows[0].seller_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to add items to this listing' })
     }
+
+    let finalImageUrl = image_url
+
+    // If a file was uploaded, upload to Cloudinary
+    if (req.file) {
+      try {
+        const result = await uploadBufferToCloudinary(req.file.buffer, { 
+          folder: process.env.CLOUDINARY_FOLDER || 'yardshare/items' 
+        })
+        finalImageUrl = result.secure_url
+      } catch (uploadErr) {
+        console.error('Cloudinary upload failed:', uploadErr)
+        return res.status(500).json({ error: 'Image upload failed' })
+      }
+    }
     
     const result = await pool.query(`
       INSERT INTO items (listing_id, title, description, price, condition, category, image_url)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [listingId, title, description, price, condition, category, image_url])
+    `, [listingId, title, description, price, condition, category, finalImageUrl])
     
     res.status(201).json(result.rows[0])
   } catch (error) {
@@ -150,6 +189,21 @@ const updateItem = async (req, res) => {
     if (req.user && ownerCheck.rows[0].seller_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to edit this item' })
     }
+
+    let finalImageUrl = image_url
+
+    // If a file was uploaded, upload to Cloudinary
+    if (req.file) {
+      try {
+        const result = await uploadBufferToCloudinary(req.file.buffer, { 
+          folder: process.env.CLOUDINARY_FOLDER || 'yardshare/items' 
+        })
+        finalImageUrl = result.secure_url
+      } catch (uploadErr) {
+        console.error('Cloudinary upload failed:', uploadErr)
+        return res.status(500).json({ error: 'Image upload failed' })
+      }
+    }
     
     const result = await pool.query(`
       UPDATE items
@@ -163,7 +217,7 @@ const updateItem = async (req, res) => {
         sold = COALESCE($7, sold)
       WHERE id = $8
       RETURNING *
-    `, [title, description, price, condition, category, image_url, sold, itemId])
+    `, [title, description, price, condition, category, finalImageUrl, sold, itemId])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })

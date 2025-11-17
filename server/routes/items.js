@@ -1,5 +1,6 @@
 const express = require('express')
 const router = express.Router()
+const multer = require('multer')
 const {
   getItem,
   getAllItems,
@@ -8,6 +9,8 @@ const {
   updateItem,
   deleteItem
 } = require('../controllers/items')
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 } })
 
 // GET /api/items/:itemId - Get single item
 router.get('/:itemId', getItem)
@@ -19,10 +22,10 @@ router.get('/', getAllItems)
 router.get('/listings/:listingId', getItemsByListing)
 
 // POST /api/items/listings/:listingId - Add item to listing
-router.post('/listings/:listingId', createItem)
+router.post('/listings/:listingId', upload.single('photo'), createItem)
 
 // PATCH /api/items/:itemId - Update item
-router.patch('/:itemId', updateItem)
+router.patch('/:itemId', upload.single('photo'), updateItem)
 
 // DELETE /api/items/:itemId - Delete item
 router.delete('/:itemId', deleteItem)
