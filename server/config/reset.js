@@ -124,6 +124,16 @@ const createTables = async () => {
       )
     `)
     
+      // Check-ins / Attendances table (neighbors attending a sale)
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS checkins (
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+          checked_in_at TIMESTAMP DEFAULT NOW(),
+          PRIMARY KEY (user_id, listing_id)
+        )
+      `)
+    
     // Item favorites table (for favoriting individual items)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS item_favorites (
@@ -308,6 +318,25 @@ const seedTestData = async () => {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       `, [listingId2, item.category_id, item.title, item.description, item.price, item.condition, item.image_url, i])
     }
+
+    // Create an extra test user to simulate neighbors attending
+    const extraUserResult = await pool.query(`
+      INSERT INTO users (githubid, username, avatarurl, accesstoken)
+      VALUES (54321, 'bryan', 'https://i.pravatar.cc/150?img=12', 'token_bryan')
+      ON CONFLICT (githubid) DO NOTHING
+      RETURNING id
+    `)
+    let bryanId
+    if (extraUserResult.rows.length === 0) {
+      const existing = await pool.query('SELECT id FROM users WHERE username = $1', ['bryan'])
+      bryanId = existing.rows[0].id
+    } else {
+      bryanId = extraUserResult.rows[0].id
+    }
+
+    // Seed some checkins: test user and bryan attending listing1
+    await pool.query(`INSERT INTO checkins (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [userId, listingId1])
+    await pool.query(`INSERT INTO checkins (user_id, listing_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [bryanId, listingId1])
     
     console.log('✅ Test data seeded')
     console.log(`   - Created 2 yard sales`)
