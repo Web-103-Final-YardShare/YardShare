@@ -6,7 +6,6 @@ const {
   updateListing,
   deleteListing,
   getSellerListings,
-  getListingPhoto,
   getNearbyCount,
   checkInListing,
   uncheckInListing
@@ -22,7 +21,6 @@ router.get('/stats/nearby-count', getNearbyCount)
 
 router.get('/', getAllListings)
 router.get('/my-listings', getSellerListings)
-router.get('/:listingId/photos/:photoId', getListingPhoto)
 router.get('/:listingId/items', require('../controllers/items').getItemsByListing)
 router.get('/:listingId', getListing)
 router.post('/', upload.any(), createListing) // Use any() to accept photos + item_photo_* fields

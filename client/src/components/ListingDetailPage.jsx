@@ -5,13 +5,13 @@ import { LoadingSpinner } from './LoadingSpinner'
 import { MapView } from './MapView'
 import { ItemCard } from './ItemCard'
 import { ItemDetailModal } from './ItemDetailPage'
-import { Heart } from 'lucide-react'
+import { Heart, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLogout }) {
-  const { id } = useParams()
+// Reusable listing content component
+export function ListingDetailContent({ listingId, isAuthenticated, user, asModal = false, onClose = null }) {
   const navigate = useNavigate()
   const [listing, setListing] = useState(null)
   const [items, setItems] = useState([])
@@ -32,7 +32,7 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
       setError('')
       try {
         // Fetch listing
-        const listingRes = await fetch(`${API_BASE}/api/listings/${id}`, { credentials: 'include' })
+        const listingRes = await fetch(`${API_BASE}/api/listings/${listingId}`, { credentials: 'include' })
         const listingData = await listingRes.json()
         if (!listingRes.ok) throw new Error(listingData?.error || 'Failed to load')
         setListing(listingData)
@@ -49,7 +49,7 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
           const favRes = await fetch(`${API_BASE}/api/favorites`, { credentials: 'include' })
           if (favRes.ok) {
             const favData = await favRes.json()
-            setIsListingSaved(favData.some(f => f.id === parseInt(id)))
+            setIsListingSaved(favData.some(f => f.id === parseInt(listingId)))
           }
           
           // Load saved items from API
@@ -61,7 +61,7 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
         }
 
         // Fetch items
-        const itemsRes = await fetch(`${API_BASE}/api/listings/${id}/items`, { credentials: 'include' })
+        const itemsRes = await fetch(`${API_BASE}/api/listings/${listingId}/items`, { credentials: 'include' })
         if (itemsRes.ok) {
           const itemsData = await itemsRes.json()
           setItems(itemsData)
@@ -73,7 +73,7 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
       }
     }
     load()
-  }, [id, user])
+  }, [listingId, user, isAuthenticated])
 
   const handleCheckIn = async () => {
     if (!isAuthenticated) {
@@ -90,7 +90,7 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
     // For checkout, do it directly
     setChecking(true)
     try {
-      const res = await fetch(`${API_BASE}/api/listings/${id}/checkin`, {
+      const res = await fetch(`${API_BASE}/api/listings/${listingId}/checkin`, {
         method: 'DELETE',
         credentials: 'include'
       })
@@ -112,7 +112,7 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
   const confirmCheckIn = async () => {
     setChecking(true)
     try {
-      const res = await fetch(`${API_BASE}/api/listings/${id}/checkin`, {
+      const res = await fetch(`${API_BASE}/api/listings/${listingId}/checkin`, {
         method: 'POST',
         credentials: 'include'
       })
@@ -142,16 +142,16 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
     }
     try {
       if (isListingSaved) {
-        const res = await fetch(`${API_BASE}/api/favorites/${id}`, {
+        const res = await fetch(`${API_BASE}/api/favorites/${listingId}`, {
           method: 'DELETE',
           credentials: 'include'
         })
         if (res.ok) {
           setIsListingSaved(false)
-          toast.success('Removed from saved')
+          toast.success('Listing removed from favorites')
         }
       } else {
-        const res = await fetch(`${API_BASE}/api/favorites/${id}`, {
+        const res = await fetch(`${API_BASE}/api/favorites/${listingId}`, {
           method: 'POST',
           credentials: 'include'
         })
@@ -285,35 +285,43 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
   }
 
   if (loading) {
-    return (
-      <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
-        <div className="py-12">
-          <LoadingSpinner text="Loading listing..." />
-        </div>
-      </Layout>
-    )
+    if (asModal) {
+      return <div className="p-8"><LoadingSpinner text="Loading listing..." /></div>
+    }
+    return <div className="py-12"><LoadingSpinner text="Loading listing..." /></div>
   }
 
   if (error || !listing) {
+    if (asModal) {
+      return <div className="p-8 text-center text-red-600">{error || 'Listing not found'}</div>
+    }
     return (
-      <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <p className="text-red-600">{error || 'Listing not found'}</p>
-          <button onClick={() => navigate('/')} className="mt-4 text-emerald-600 hover:underline">← Back to listings</button>
-        </div>
-      </Layout>
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <p className="text-red-600">{error || 'Listing not found'}</p>
+        <button onClick={() => navigate('/')} className="mt-4 text-emerald-600 hover:underline">← Back to listings</button>
+      </div>
     )
   }
 
-  // photos is now an array of URL strings from photo_urls column
+  // photos is an array of URL strings from photo_urls column
   const photoUrl = (Array.isArray(listing.photos) && listing.photos.length > 0) 
     ? listing.photos[0] 
     : listing.image_url || 'https://placehold.co/800x400?text=No+Image'
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <button onClick={() => navigate('/')} className="text-emerald-600 hover:underline mb-4">← Back to listings</button>
+    <>
+      {asModal && onClose && (
+        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+          <h2 className="text-2xl font-bold">{listing.title}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      )}
+      <div className={asModal ? "p-6" : "max-w-4xl mx-auto px-6 py-8"}>
+        {!asModal && (
+          <button onClick={() => navigate('/')} className="text-emerald-600 hover:underline mb-4">← Back to listings</button>
+        )}
         
         <div className="bg-white rounded-lg border overflow-hidden">
           {/* Header Image */}
@@ -485,6 +493,17 @@ export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLog
           </>
         )}
       </div>
+    </>
+  )
+}
+
+// Page wrapper component
+export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLogout }) {
+  const { id } = useParams()
+  
+  return (
+    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+      <ListingDetailContent listingId={id} isAuthenticated={isAuthenticated} user={user} />
     </Layout>
   )
 }

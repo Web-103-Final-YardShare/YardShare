@@ -4,7 +4,7 @@ import { SalesList } from './SalesList';
 import { MapView } from './MapView';
 import { FilterDialog } from './FilterDialog';
 
-export function HomePage({ isAuthenticated, user, favorites, toggleFavorite, onLogout }) {
+export function HomePage({ isAuthenticated, user, favorites, savedItemsCount = 0, toggleFavorite, onLogout }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -21,7 +21,7 @@ export function HomePage({ isAuthenticated, user, favorites, toggleFavorite, onL
         setSearchQuery={setSearchQuery}
         isAuthenticated={isAuthenticated}
         user={user}
-        favoritesCount={favorites.length}
+        favoritesCount={favorites.length + savedItemsCount}
         onLogout={onLogout}
         location={location}
         setLocation={setLocation}

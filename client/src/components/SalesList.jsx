@@ -162,11 +162,9 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
   
   const photoUrl = useMemo(() => {
     const photos = listing.photos || [];
-    if (photos.length > 0) {
-      const primary = photos.find(p => p.is_primary) || photos[0];
-      if (primary && primary.url) {
-        return primary.url.startsWith('/') ? `${API_BASE}${primary.url}` : primary.url;
-      }
+    // photos is now an array of URL strings, not objects
+    if (Array.isArray(photos) && photos.length > 0) {
+      return photos[0];
     }
     if (listing.image_url && listing.image_url.startsWith('/')) return `${API_BASE}${listing.image_url}`;
     return listing.image_url || 'https://placehold.co/600x400?text=No+Image';

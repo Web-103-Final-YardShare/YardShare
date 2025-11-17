@@ -1,18 +1,43 @@
 import { Layout } from './Layout'
 import { useEffect, useState } from 'react'
-import { Heart, MapPin, DollarSign } from 'lucide-react'
+import { Heart, MapPin } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { LoadingSpinner } from './LoadingSpinner'
 import { ItemCard } from './ItemCard'
 import { ItemDetailModal } from './ItemDetailPage'
+import { ListingDetailContent } from './ListingDetailPage'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
+function ListingDetailModal({ listingId, isOpen, onClose, isAuthenticated, user, onUnsave }) {
+  if (!isOpen) return null
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="flex min-h-full items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <ListingDetailContent 
+              listingId={listingId}
+              isAuthenticated={isAuthenticated}
+              user={user}
+              asModal={true}
+              onClose={onClose}
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export function SavedPage({ isAuthenticated, user, favorites, savedItemsCount = 0, onLogout }) {
   const [savedListings, setSavedListings] = useState([])
   const [savedItems, setSavedItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedItemId, setSelectedItemId] = useState(null)
+  const [selectedListingId, setSelectedListingId] = useState(null)
 
   useEffect(() => {
     document.title = 'Saved Items - YardSaleApp'
@@ -27,11 +52,7 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
       })
       if (listingsRes.ok) {
         const data = await listingsRes.json()
-        const parsed = data.map(item => ({
-          ...item,
-          photos: typeof item.photos === 'string' ? JSON.parse(item.photos) : item.photos
-        }))
-        setSavedListings(parsed)
+        setSavedListings(data)
       }
       
       // Load saved items
@@ -86,15 +107,12 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
   }
 
   const getPrimaryPhoto = (listing) => {
-    if (!listing.photos || listing.photos.length === 0) {
-      return listing.image_url || 'https://placehold.co/400x300?text=No+Image'
+    const photos = listing.photos || []
+    // photos is an array of URL strings
+    if (Array.isArray(photos) && photos.length > 0) {
+      return photos[0]
     }
-    const primary = listing.photos.find(p => p.is_primary)
-    const photo = primary || listing.photos[0]
-    if (photo.url.startsWith('/api/')) {
-      return `${API_BASE}${photo.url}`
-    }
-    return photo.url || 'https://placehold.co/400x300?text=No+Image'
+    return listing.image_url || 'https://placehold.co/400x300?text=No+Image'
   }
 
   const formatPrice = (value) => {
@@ -104,7 +122,7 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
   }
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favorites?.length || 0} onLogout={onLogout}>
+    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={(favorites?.length || 0) + savedItemsCount} onLogout={onLogout}>
       <div className="max-w-7xl mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold mb-8">Saved Favorites</h1>
         
@@ -117,7 +135,6 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
               <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
                 <span>🏘️</span>
                 <span>Saved Yard Sales</span>
-                <span className="text-lg text-gray-500">({savedListings.length})</span>
               </h2>
               {savedListings.length === 0 ? (
                 <p className="text-gray-600 bg-gray-50 p-6 rounded-lg">
@@ -126,7 +143,11 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {savedListings.map(listing => (
-                    <div key={listing.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+                    <div 
+                      key={listing.id} 
+                      className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                      onClick={() => setSelectedListingId(listing.id)}
+                    >
                       <div className="relative">
                         <img 
                           src={getPrimaryPhoto(listing)} 
@@ -134,13 +155,13 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
                           className="w-full h-48 object-cover"
                         />
                         <button
-                          onClick={() => handleUnsaveListing(listing.id)}
+                          onClick={(e) => { e.stopPropagation(); handleUnsaveListing(listing.id); }}
                           className="absolute top-2 right-2 bg-white rounded-full p-2 shadow-md hover:bg-gray-100"
                           title="Remove from saved"
                         >
                           <Heart className="w-5 h-5 fill-red-500 text-red-500" />
                         </button>
-                        {!listing.is_available && (
+                        {!listing.is_active && (
                           <div className="absolute bottom-2 left-2 bg-gray-900 text-white px-2 py-1 rounded text-sm">
                             Unavailable
                           </div>
@@ -169,7 +190,6 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
               <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
                 <span>🛍️</span>
                 <span>Saved Items</span>
-                <span className="text-lg text-gray-500">({savedItems.length})</span>
               </h2>
               {savedItems.length === 0 ? (
                 <p className="text-gray-600 bg-gray-50 p-6 rounded-lg">
@@ -205,6 +225,16 @@ export function SavedPage({ isAuthenticated, user, favorites, onLogout }) {
               .then(data => setSavedItems(data))
               .catch(() => {})
           }}
+        />
+
+        {/* Listing Detail Modal */}
+        <ListingDetailModal
+          listingId={selectedListingId}
+          isOpen={selectedListingId !== null}
+          onClose={() => setSelectedListingId(null)}
+          isAuthenticated={isAuthenticated}
+          user={user}
+          onUnsave={handleUnsaveListing}
         />
       </div>
     </Layout>

@@ -9,7 +9,7 @@ const getUserListingFavorites = async (req, res) => {
     }
 
     const results = await pool.query(`
-      SELECT l.*, u.username as seller_username, f.favorited_at
+      SELECT l.*, l.photo_urls as photos, u.username as seller_username, f.favorited_at
       FROM favorites f
       JOIN listings l ON f.listing_id = l.id
       LEFT JOIN users u ON l.seller_id = u.id
