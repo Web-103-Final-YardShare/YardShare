@@ -7,6 +7,7 @@ import { SavedPage } from './components/SavedPage';
 import { CreateSalePage } from './components/CreateSalePage';
 import { ProfilePage } from './components/ProfilePage';
 import { MySalesPage } from './components/MySalesPage';
+import { ListingDetailPage } from './components/ListingDetailPage';
 
 const API_URL = import.meta?.env?.VITE_API_URL || 'http://localhost:3001';
 
@@ -205,6 +206,17 @@ export default function App() {
             ) : (
               <Navigate to="/auth" replace />
             )
+          } 
+        />
+        <Route 
+          path="/listings/:id" 
+          element={
+            <ListingDetailPage 
+              isAuthenticated={isAuthenticated}
+              user={user}
+              favoritesCount={favorites.length}
+              onLogout={handleLogout}
+            />
           } 
         />
         <Route 

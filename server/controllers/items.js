@@ -3,7 +3,7 @@ const pool = require('../db/pool')
 // GET single item with sale info
 const getItem = async (req, res) => {
   try {
-    const { id } = req.params
+    const { itemId } = req.params
     
     const result = await pool.query(`
       SELECT 
@@ -20,7 +20,7 @@ const getItem = async (req, res) => {
       JOIN listings ON items.listing_id = listings.id
       LEFT JOIN categories ON items.category_id = categories.id
       WHERE items.id = $1
-    `, [id])
+    `, [itemId])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })
@@ -135,7 +135,7 @@ const createItem = async (req, res) => {
 // PATCH update item
 const updateItem = async (req, res) => {
   try {
-    const { id } = req.params
+    const { itemId } = req.params
     const { title, description, price, condition, category_id, image_url, sold } = req.body
     
     // Check ownership
@@ -144,7 +144,7 @@ const updateItem = async (req, res) => {
       FROM items 
       JOIN listings ON items.listing_id = listings.id 
       WHERE items.id = $1
-    `, [id])
+    `, [itemId])
     
     if (ownerCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })
@@ -166,7 +166,7 @@ const updateItem = async (req, res) => {
         sold = COALESCE($7, sold)
       WHERE id = $8
       RETURNING *
-    `, [title, description, price, condition, category_id, image_url, sold, id])
+    `, [title, description, price, condition, category_id, image_url, sold, itemId])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })
@@ -182,7 +182,7 @@ const updateItem = async (req, res) => {
 // DELETE item
 const deleteItem = async (req, res) => {
   try {
-    const { id } = req.params
+    const { itemId } = req.params
     
     // Check ownership
     const ownerCheck = await pool.query(`
@@ -190,7 +190,7 @@ const deleteItem = async (req, res) => {
       FROM items 
       JOIN listings ON items.listing_id = listings.id 
       WHERE items.id = $1
-    `, [id])
+    `, [itemId])
     
     if (ownerCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })
@@ -200,7 +200,7 @@ const deleteItem = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to delete this item' })
     }
     
-    const result = await pool.query('DELETE FROM items WHERE id = $1 RETURNING *', [id])
+    const result = await pool.query('DELETE FROM items WHERE id = $1 RETURNING *', [itemId])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })

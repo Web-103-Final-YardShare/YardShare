@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MapPin, Heart, Filter, DollarSign } from 'lucide-react';
 import { LoadingSpinner } from './LoadingSpinner';
 
@@ -80,6 +81,7 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
 }
 
 function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user }) {
+  const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
   const [localCheckInCount, setLocalCheckInCount] = useState(parseInt(listing.check_in_count) || 0);
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -255,6 +257,7 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
 
   return (
     <div 
+      onClick={() => navigate(`/listings/${listing.id}`)}
       className="block border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transform hover:-translate-y-1 transition-all bg-white cursor-pointer no-underline"
     >
       {/* Photo */}

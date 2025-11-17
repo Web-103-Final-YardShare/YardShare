@@ -4,7 +4,7 @@ const { getUserFavorites, addFavorite, removeFavorite } = require('../controller
 const router = express.Router()
 
 router.get('/', getUserFavorites)
-router.post('/:listing_id', addFavorite)
-router.delete('/:listing_id', removeFavorite)
+router.post('/:listingId', addFavorite)
+router.delete('/:listingId', removeFavorite)
 
 module.exports = router

@@ -117,7 +117,7 @@ const getAllListings = async (req, res) => {
 // GET single listing
 const getListing = async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.listingId)
     const results = await pool.query(`
       SELECT 
         l.*, 
@@ -294,7 +294,7 @@ const createListing = async (req, res) => {
 // PATCH update listing
 const updateListing = async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.listingId)
     const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, is_available, photos, primaryIndex, items } = req.body
     
     // Check ownership
@@ -433,7 +433,7 @@ const updateListing = async (req, res) => {
 // DELETE listing
 const deleteListing = async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
+    const id = parseInt(req.params.listingId)
     
     // Check ownership
     const ownerCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [id])
@@ -499,7 +499,7 @@ const getSellerListings = async (req, res) => {
 // GET binary photo handler
 const getListingPhoto = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.id)
+    const listingId = parseInt(req.params.listingId)
     const photoId = parseInt(req.params.photoId)
     const q = await pool.query(
       `SELECT data, mime_type FROM listing_photos WHERE id = $1 AND listing_id = $2 LIMIT 1`,
@@ -556,7 +556,7 @@ const getNearbyCount = async (req, res) => {
 // POST check-in
 const checkInListing = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.id)
+    const listingId = parseInt(req.params.listingId)
     const userId = req.user ? req.user.id : null
     if (!userId) return res.status(401).json({ error: 'Must be logged in to check in' })
 
@@ -575,7 +575,7 @@ const checkInListing = async (req, res) => {
 // DELETE check-in
 const uncheckInListing = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.id)
+    const listingId = parseInt(req.params.listingId)
     const userId = req.user ? req.user.id : null
     if (!userId) return res.status(401).json({ error: 'Must be logged in to un-check in' })
 
