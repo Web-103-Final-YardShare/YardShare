@@ -6,6 +6,7 @@ import { LoadingSpinner } from './LoadingSpinner'
 import { ItemCard } from './ItemCard'
 import { ItemDetailModal } from './ItemDetailPage'
 import { ListingDetailContent } from './ListingDetailPage'
+import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -107,12 +108,8 @@ export function SavedPage({ isAuthenticated, user, favorites, savedItemsCount = 
   }
 
   const getPrimaryPhoto = (listing) => {
-    const photos = listing.photos || []
-    // photos is an array of URL strings
-    if (Array.isArray(photos) && photos.length > 0) {
-      return photos[0]
-    }
-    return listing.image_url || 'https://placehold.co/400x300?text=No+Image'
+    // Use helper to handle both legacy string arrays and new photo objects
+    return getPrimaryPhotoUrl(listing.photos, listing.image_url || 'https://placehold.co/400x300?text=No+Image')
   }
 
   const formatPrice = (value) => {
