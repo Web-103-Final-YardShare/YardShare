@@ -213,6 +213,15 @@ const createListing = async (req, res) => {
       console.error('[createListing] INSERT failed:', insertError.message);
       console.error('[createListing] INSERT error detail:', insertError.detail);
       console.error('[createListing] Parameters:', { seller_id, category_id, title });
+
+      // Check if it's a foreign key constraint error for seller_id
+      if (insertError.code === '23503' && insertError.constraint === 'listings_seller_id_fkey') {
+        await pool.query('ROLLBACK');
+        return res.status(401).json({
+          error: 'Your session is invalid. Please log out and log back in.'
+        });
+      }
+
       throw insertError;
     }
 
