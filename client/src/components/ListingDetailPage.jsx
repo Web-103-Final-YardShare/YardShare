@@ -18,9 +18,14 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [isCheckedIn, setIsCheckedIn] = useState(false)
+  const [checkInCount, setCheckInCount] = useState(0)
+  const [checkedInUsers, setCheckedInUsers] = useState([])
   const [isListingSaved, setIsListingSaved] = useState(false)
   const [savedItems, setSavedItems] = useState(new Set())
   const [selectedItemId, setSelectedItemId] = useState(null)
+  const [showCheckInModal, setShowCheckInModal] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -32,6 +37,13 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
         const listingData = await listingRes.json()
         if (!listingRes.ok) throw new Error(listingData?.error || 'Failed to load')
         setListing(listingData)
+        setCheckInCount(parseInt(listingData.check_in_count) || 0)
+        setCheckedInUsers(listingData.checked_in_users || [])
+
+        // Check if current user is checked in
+        if (user && listingData.checked_in_users) {
+          setIsCheckedIn(listingData.checked_in_users.some(u => u.username === user.username))
+        }
 
         // Check if listing is saved
         if (isAuthenticated) {
@@ -63,6 +75,66 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
     }
     load()
   }, [listingId, user, isAuthenticated])
+
+  const handleCheckIn = async () => {
+    if (!isAuthenticated) {
+      toast.error('Please login to check in')
+      return
+    }
+
+    // If checking in, show modal first
+    if (!isCheckedIn) {
+      setShowCheckInModal(true)
+      return
+    }
+
+    // For checkout, do it directly
+    setChecking(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/listings/${listingId}/checkin`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+      if (res.ok) {
+        setIsCheckedIn(false)
+        setCheckInCount(prev => Math.max(0, prev - 1))
+        if (user) {
+          setCheckedInUsers(prev => prev.filter(u => u.username !== user.username))
+        }
+        toast.success('Checked out')
+      }
+    } catch (e) {
+      toast.error('Check-in failed')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const confirmCheckIn = async () => {
+    setChecking(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/listings/${listingId}/checkin`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      if (res.ok) {
+        setIsCheckedIn(true)
+        setCheckInCount(prev => prev + 1)
+        if (user) {
+          setCheckedInUsers(prev => [
+            { id: Date.now(), username: user.username, avatarurl: user.avatarurl },
+            ...prev
+          ])
+        }
+        toast.success('Checked in!')
+        setShowCheckInModal(false) // Close modal on success
+      }
+    } catch (e) {
+      toast.error('Check-in failed')
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const handleSaveListing = async () => {
     if (!isAuthenticated) {
@@ -310,6 +382,33 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
               </div>
             </div>
 
+            {/* Who's Going */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3">Who's going?</h3>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex -space-x-2">
+                  {checkedInUsers.slice(0, 3).map(u => (
+                    <img key={u.id} src={u.avatarurl || 'https://i.pravatar.cc/40'} alt={u.username} className="w-8 h-8 rounded-full border-2 border-white" />
+                  ))}
+                  {checkInCount > 3 && (
+                    <div className="w-8 h-8 rounded-full bg-gray-200 text-xs flex items-center justify-center border-2 border-white">+{checkInCount - 3}</div>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600">
+                  {checkInCount === 0 ? 'No one yet' : `${checkInCount} ${checkInCount === 1 ? 'person' : 'people'}`}
+                </p>
+              </div>
+              <button
+                onClick={handleCheckIn}
+                disabled={checking}
+                className={`w-full py-2 rounded font-semibold ${
+                  checking ? 'bg-gray-300 text-gray-500' : isCheckedIn ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {checking ? 'Loading...' : isCheckedIn ? 'Checked in' : 'Check in!'}
+              </button>
+            </div>
+
             {/* Location Map */}
             {listing.latitude && listing.longitude && (
               <div className="mb-6">
@@ -359,6 +458,42 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
               .catch(() => {})
           }}
         />
+
+        {/* Check-in Confirmation Modal */}
+        {showCheckInModal && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setShowCheckInModal(false)}
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+              <div
+                className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xl font-bold mb-4">Check in to this yard sale?</h3>
+                <p className="text-gray-600 mb-6">
+                  Let others know you're planning to attend! You can check out anytime.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowCheckInModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmCheckIn}
+                    disabled={checking}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {checking ? 'Checking in...' : 'Check in'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </>
   )

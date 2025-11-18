@@ -123,25 +123,37 @@ const getListing = async (req, res) => {
         /* Photos from listing_photos table */
         COALESCE(
           json_agg(
-            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
-            ORDER BY lp.position
+            DISTINCT jsonb_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY jsonb_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)->>'position'
           ) FILTER (WHERE lp.id IS NOT NULL),
           '[]'::json
-        ) as photos
+        ) as photos,
+        /* Check-in count */
+        COUNT(DISTINCT a.user_id) as check_in_count,
+        /* Checked-in users info */
+        COALESCE(
+          json_agg(
+            DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)
+            ORDER BY jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)->>'username'
+          ) FILTER (WHERE au.id IS NOT NULL),
+          '[]'::json
+        ) as checked_in_users
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
       LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN items i ON i.listing_id = l.id
       LEFT JOIN categories ic ON i.category_id = ic.id
       LEFT JOIN listing_photos lp ON l.id = lp.listing_id
+      LEFT JOIN attendees a ON l.id = a.listing_id
+      LEFT JOIN users au ON a.user_id = au.id
       WHERE l.id = $1
       GROUP BY l.id, u.username, u.avatarurl, c.name
     `, [id])
-    
+
     if (results.rows.length === 0) {
       return res.status(404).json({ error: 'Listing not found' })
     }
-    
+
     res.status(200).json(results.rows[0])
   } catch (error) {
     console.error('Error in getListing:', error)
@@ -580,11 +592,38 @@ const getNearbyCount = async (req, res) => {
 }
 
 // POST check-in
-// TODO: Implement attendees table for check-ins
 const checkInListing = async (req, res) => {
   try {
-    // Feature temporarily disabled - needs attendees table
-    res.status(501).json({ error: 'Check-in feature temporarily disabled during refactor' })
+    const user_id = req.user ? req.user.id : null
+    if (!user_id) {
+      return res.status(401).json({ error: 'Must be logged in to check in' })
+    }
+
+    const listingId = parseInt(req.params.listingId)
+
+    // Check if listing exists
+    const listingCheck = await pool.query('SELECT id FROM listings WHERE id = $1', [listingId])
+    if (listingCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Listing not found' })
+    }
+
+    // Check if already checked in
+    const existing = await pool.query(
+      'SELECT * FROM attendees WHERE user_id = $1 AND listing_id = $2',
+      [user_id, listingId]
+    )
+
+    if (existing.rows.length > 0) {
+      return res.status(200).json({ message: 'Already checked in', checked_in: true })
+    }
+
+    // Insert check-in
+    await pool.query(
+      'INSERT INTO attendees (user_id, listing_id, checked_in_at) VALUES ($1, $2, NOW())',
+      [user_id, listingId]
+    )
+
+    res.status(201).json({ message: 'Checked in successfully', checked_in: true })
   } catch (error) {
     console.error('Error in checkInListing:', error)
     res.status(500).json({ error: error.message })
@@ -592,11 +631,21 @@ const checkInListing = async (req, res) => {
 }
 
 // DELETE check-in
-// TODO: Implement attendees table for check-outs
 const uncheckInListing = async (req, res) => {
   try {
-    // Feature temporarily disabled - needs attendees table
-    res.status(501).json({ error: 'Check-out feature temporarily disabled during refactor' })
+    const user_id = req.user ? req.user.id : null
+    if (!user_id) {
+      return res.status(401).json({ error: 'Must be logged in' })
+    }
+
+    const listingId = parseInt(req.params.listingId)
+
+    await pool.query(
+      'DELETE FROM attendees WHERE user_id = $1 AND listing_id = $2',
+      [user_id, listingId]
+    )
+
+    res.status(200).json({ message: 'Checked out successfully', checked_in: false })
   } catch (error) {
     console.error('Error in uncheckInListing:', error)
     res.status(500).json({ error: error.message })

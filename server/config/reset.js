@@ -5,6 +5,7 @@ const dropTables = async () => {
   try {
     console.log('🗑️  Dropping tables...')
     await pool.query('DROP TABLE IF EXISTS item_favorites CASCADE')
+    await pool.query('DROP TABLE IF EXISTS attendees CASCADE')
     await pool.query('DROP TABLE IF EXISTS items CASCADE')
     await pool.query('DROP TABLE IF EXISTS listing_photos CASCADE')
     await pool.query('DROP TABLE IF EXISTS favorites CASCADE')
@@ -138,7 +139,17 @@ const createTables = async () => {
         PRIMARY KEY (user_id, item_id)
       )
     `)
-    
+
+    // Attendees table (for tracking check-ins to yard sales)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS attendees (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        checked_in_at TIMESTAMP DEFAULT NOW(),
+        PRIMARY KEY (user_id, listing_id)
+      )
+    `)
+
     console.log('✅ Tables created')
   } catch (error) {
     console.error('❌ Error creating tables:', error.message)
