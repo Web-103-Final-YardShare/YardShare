@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Layout } from './Layout'
 import { LoadingSpinner } from './LoadingSpinner'
 import { LocationPicker } from './LocationPicker'
+import { getPrimaryPhotoUrl, getAllPhotoUrls } from '../utils/photoHelpers'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
