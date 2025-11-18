@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Heart, MapPin, X, ExternalLink } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { LoadingSpinner } from './LoadingSpinner'
+import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
 import toast from 'react-hot-toast'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
@@ -149,7 +150,7 @@ export function ItemDetailModal({ itemId, isOpen, onClose, isAuthenticated, onFa
                 <div className="relative bg-gray-100">
                   <div className="h-96 md:h-full md:min-h-[500px]">
                     <img
-                      src={item.image_url || 'https://placehold.co/600x600?text=No+Image'}
+                      src={getPrimaryPhotoUrl(item.photos, item.image_url || 'https://placehold.co/600x600?text=No+Image')}
                       alt={item.title}
                       className="w-full h-full object-cover"
                       onError={(e) => {

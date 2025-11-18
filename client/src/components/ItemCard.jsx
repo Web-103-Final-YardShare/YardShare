@@ -1,4 +1,5 @@
 import { Heart } from 'lucide-react'
+import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
 
 export function ItemCard({ item, isSaved, onSave, onItemClick }) {
 
@@ -25,9 +26,9 @@ export function ItemCard({ item, isSaved, onSave, onItemClick }) {
     >
       {/* Item Image */}
       <div className="relative h-52 bg-gray-100">
-        <img 
-          src={item.image_url || 'https://placehold.co/400x300?text=No+Image'} 
-          alt={item.title} 
+        <img
+          src={getPrimaryPhotoUrl(item.photos, item.image_url || 'https://placehold.co/400x300?text=No+Image')}
+          alt={item.title}
           className="w-full h-full object-cover"
           onError={(e) => {
             e.target.src = 'https://placehold.co/400x300?text=No+Image'

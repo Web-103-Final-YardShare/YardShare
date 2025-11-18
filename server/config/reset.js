@@ -120,6 +120,28 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_items_listing_id ON items(listing_id)
     `)
 
+    // Item photos table (multiple photos per item)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS item_photos (
+        id SERIAL PRIMARY KEY,
+        item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+        url VARCHAR(500),
+        data BYTEA,
+        mime_type VARCHAR(100),
+        is_primary BOOLEAN DEFAULT FALSE,
+        position INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_item_photos_item_id ON item_photos(item_id)
+    `)
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_primary_photo_per_item
+      ON item_photos (item_id)
+      WHERE is_primary
+    `)
+
     // Listing favorites table (junction table for user favorites)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS listing_favorites (
