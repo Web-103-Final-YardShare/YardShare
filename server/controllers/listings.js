@@ -120,32 +120,34 @@ const getListing = async (req, res) => {
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
         ARRAY_AGG(DISTINCT ic.name) FILTER (WHERE ic.name IS NOT NULL) as item_categories,
-        /* Photos from listing_photos table */
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
-            ORDER BY jsonb_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)->>'position'
-          ) FILTER (WHERE lp.id IS NOT NULL),
-          '[]'::json
+        /* Photos from listing_photos table (aggregated in a subquery to preserve ordering and avoid DISTINCT+ORDER conflicts) */
+        (
+          SELECT COALESCE(
+            json_agg(json_build_object('id', p.id, 'url', p.url, 'is_primary', p.is_primary, 'position', p.position) ORDER BY p.position),
+            '[]'::json
+          )
+          FROM listing_photos p
+          WHERE p.listing_id = l.id
         ) as photos,
-        /* Check-in count */
-        COUNT(DISTINCT a.user_id) as check_in_count,
-        /* Checked-in users info */
-        COALESCE(
-          json_agg(
-            DISTINCT jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)
-            ORDER BY jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl)->>'username'
-          ) FILTER (WHERE au.id IS NOT NULL),
-          '[]'::json
+        /* Check-in count (from attendees table) */
+        (
+          SELECT COUNT(*) FROM attendees a2 WHERE a2.listing_id = l.id
+        ) as check_in_count,
+        /* Checked-in users info (aggregated in a subquery) */
+        (
+          SELECT COALESCE(
+            json_agg(json_build_object('id', u2.id, 'username', u2.username, 'avatarurl', u2.avatarurl) ORDER BY u2.username),
+            '[]'::json
+          )
+          FROM attendees a2
+          JOIN users u2 ON a2.user_id = u2.id
+          WHERE a2.listing_id = l.id
         ) as checked_in_users
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
       LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN items i ON i.listing_id = l.id
       LEFT JOIN categories ic ON i.category_id = ic.id
-      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
-      LEFT JOIN attendees a ON l.id = a.listing_id
-      LEFT JOIN users au ON a.user_id = au.id
       WHERE l.id = $1
       GROUP BY l.id, u.username, u.avatarurl, c.name
     `, [id])
