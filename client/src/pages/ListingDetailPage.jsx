@@ -1,12 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Layout } from './Layout'
-import { LoadingSpinner } from './LoadingSpinner'
-import { MapView } from './MapView'
-import { ItemCard } from './ItemCard'
-import { ItemDetailModal } from './ItemDetailPage'
+import { Layout } from '../components/shared/Layout'
+import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { MapView } from '../components/MapView'
+import { ItemCard } from '../components/ItemCard'
+import { ItemDetailModal } from '../components/ItemDetailPage'
 import { Heart, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -38,7 +39,7 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
         setListing(listingData)
         setCheckInCount(parseInt(listingData.check_in_count) || 0)
         setCheckedInUsers(listingData.checked_in_users || [])
-        
+
         // Check if current user is checked in
         if (user && listingData.checked_in_users) {
           setIsCheckedIn(listingData.checked_in_users.some(u => u.username === user.username))
@@ -80,13 +81,13 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
       toast.error('Please login to check in')
       return
     }
-    
+
     // If checking in, show modal first
     if (!isCheckedIn) {
       setShowCheckInModal(true)
       return
     }
-    
+
     // For checkout, do it directly
     setChecking(true)
     try {
@@ -121,7 +122,7 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
         setCheckInCount(prev => prev + 1)
         if (user) {
           setCheckedInUsers(prev => [
-            { id: Date.now(), username: user.username, avatarurl: user.avatar_url },
+            { id: Date.now(), username: user.username, avatarurl: user.avatarurl },
             ...prev
           ])
         }
@@ -303,10 +304,11 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
     )
   }
 
-  // photos is an array of URL strings from photo_urls column
-  const photoUrl = (Array.isArray(listing.photos) && listing.photos.length > 0) 
-    ? listing.photos[0] 
-    : listing.image_url || 'https://placehold.co/800x400?text=No+Image'
+  // Use photo helper to handle both legacy and new photo formats
+  const photoUrl = getPrimaryPhotoUrl(
+    listing.photos,
+    listing.image_url || 'https://placehold.co/800x400?text=No+Image'
+  )
 
   return (
     <>
@@ -368,9 +370,9 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
             <div className="mb-6 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-2">Hosted by</h3>
               <div className="flex items-center gap-3">
-                <img 
-                  src={listing.seller_avatar || 'https://i.pravatar.cc/40'} 
-                  alt={listing.seller_username} 
+                <img
+                  src={listing.seller_avatar || 'https://i.pravatar.cc/40'}
+                  alt={listing.seller_username}
                   className="w-10 h-10 rounded-full"
                 />
                 <div>
@@ -443,14 +445,14 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
         </div>
 
         {/* Item Detail Modal */}
-        <ItemDetailModal 
+        <ItemDetailModal
           itemId={selectedItemId}
           isOpen={selectedItemId !== null}
           onClose={() => setSelectedItemId(null)}
           isAuthenticated={isAuthenticated}
           onFavoriteChange={() => {
             // Refetch listing to update item favorite states
-            fetch(`${API_BASE}/api/listings/${id}`, { credentials: 'include' })
+            fetch(`${API_BASE}/api/listings/${listingId}`, { credentials: 'include' })
               .then(res => res.json())
               .then(data => setListing(data))
               .catch(() => {})
@@ -465,7 +467,7 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
               onClick={() => setShowCheckInModal(false)}
             />
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-              <div 
+              <div
                 className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 pointer-events-auto"
                 onClick={(e) => e.stopPropagation()}
               >
@@ -498,11 +500,29 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
 }
 
 // Page wrapper component
-export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function ListingDetailPage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const { id } = useParams()
-  
+
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       <ListingDetailContent listingId={id} isAuthenticated={isAuthenticated} user={user} />
     </Layout>
   )

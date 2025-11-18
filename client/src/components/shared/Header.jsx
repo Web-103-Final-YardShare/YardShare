@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Search, Heart, Plus, User, LogOut } from 'lucide-react';
-import { Button } from './Button';
+import { Button } from '../Button';
 
 export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, favoritesCount, onLogout, location, setLocation }) {
   const navigate = useNavigate();

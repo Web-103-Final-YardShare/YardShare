@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { HomePage } from './components/HomePage';
-import { AuthPage } from './components/AuthPage';
-import { SavedPage } from './components/SavedPage';
-import { CreateSalePage } from './components/CreateSalePage';
-import { ProfilePage } from './components/ProfilePage';
-import { MySalesPage } from './components/MySalesPage';
-import { ListingDetailPage } from './components/ListingDetailPage';
+import { HomePage } from './pages/HomePage';
+import { AuthPage } from './pages/AuthPage';
+import { SavedPage } from './pages/SavedPage';
+import { CreateSalePage } from './pages/CreateSalePage';
+import { ProfilePage } from './pages/ProfilePage';
+import { MySalesPage } from './pages/MySalesPage';
+import { ListingDetailPage } from './pages/ListingDetailPage';
 
 const API_URL = import.meta?.env?.VITE_API_URL || 'http://localhost:3001';
 
@@ -17,6 +17,10 @@ export default function App() {
   const [favorites, setFavorites] = useState([]);
   const [savedItemsCount, setSavedItemsCount] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Global search state (accessible from all pages)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [location, setLocation] = useState({ name: 'Orlando, FL', lat: 28.5383, lng: -81.3792 });
 
   // Check if user is logged in on mount
   useEffect(() => {
@@ -150,94 +154,118 @@ export default function App() {
     <Router>
       <Toaster position="top-right" />
       <Routes>
-        <Route 
-          path="/" 
+        <Route
+          path="/"
           element={
-            <HomePage 
+            <HomePage
               isAuthenticated={isAuthenticated}
               user={user}
               favorites={favorites}
               savedItemsCount={savedItemsCount}
               toggleFavorite={toggleFavorite}
               onLogout={handleLogout}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              location={location}
+              setLocation={setLocation}
             />
-          } 
+          }
         />
         <Route 
           path="/auth" 
           element={<AuthPage />} 
         />
-        <Route 
-          path="/saved" 
+        <Route
+          path="/saved"
           element={
             isAuthenticated ? (
-              <SavedPage 
+              <SavedPage
                 isAuthenticated={isAuthenticated}
                 user={user}
                 favorites={favorites}
                 savedItemsCount={savedItemsCount}
                 onLogout={handleLogout}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                location={location}
+                setLocation={setLocation}
               />
             ) : (
               <Navigate to="/auth" replace />
             )
-          } 
+          }
         />
-        <Route 
-          path="/create" 
+        <Route
+          path="/create"
           element={
             isAuthenticated ? (
-              <CreateSalePage 
+              <CreateSalePage
                 isAuthenticated={isAuthenticated}
                 user={user}
                 favoritesCount={favorites.length + savedItemsCount}
                 onLogout={handleLogout}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                location={location}
+                setLocation={setLocation}
               />
             ) : (
               <Navigate to="/auth" replace />
             )
-          } 
+          }
         />
-        <Route 
-          path="/profile" 
+        <Route
+          path="/profile"
           element={
             isAuthenticated ? (
-              <ProfilePage 
+              <ProfilePage
                 isAuthenticated={isAuthenticated}
                 user={user}
                 favoritesCount={favorites.length + savedItemsCount}
                 onLogout={handleLogout}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                location={location}
+                setLocation={setLocation}
               />
             ) : (
               <Navigate to="/auth" replace />
             )
-          } 
+          }
         />
-        <Route 
-          path="/my-sales" 
+        <Route
+          path="/my-sales"
           element={
             isAuthenticated ? (
-              <MySalesPage 
+              <MySalesPage
                 isAuthenticated={isAuthenticated}
                 user={user}
                 favoritesCount={favorites.length + savedItemsCount}
                 onLogout={handleLogout}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                location={location}
+                setLocation={setLocation}
               />
             ) : (
               <Navigate to="/auth" replace />
             )
-          } 
+          }
         />
-        <Route 
-          path="/listings/:id" 
+        <Route
+          path="/listings/:id"
           element={
-            <ListingDetailPage 
+            <ListingDetailPage
               isAuthenticated={isAuthenticated}
               user={user}
               favoritesCount={favorites.length + savedItemsCount}
               onLogout={handleLogout}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              location={location}
+              setLocation={setLocation}
             />
-          } 
+          }
         />
         <Route 
           path="*" 
