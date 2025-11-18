@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart } from 'lucide-react';
+import { getPrimaryPhotoUrl } from '../utils/photoHelpers';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -28,13 +29,19 @@ export function ListingCard({ listing, isFavorite, onToggleFavorite, isAuthentic
   }, []);
 
   const photoUrl = useMemo(() => {
-    const photos = listing.photos || [];
-    // photos is now an array of URL strings, not objects
-    if (Array.isArray(photos) && photos.length > 0) {
-      return photos[0];
+    // Use photo helper to correctly handle photo objects from listing_photos table
+    const primaryPhoto = getPrimaryPhotoUrl(listing.photos);
+    if (primaryPhoto && primaryPhoto !== 'https://placehold.co/600x400?text=No+Image') {
+      return primaryPhoto;
     }
-    if (listing.image_url && listing.image_url.startsWith('/')) return `${API_BASE}${listing.image_url}`;
-    return listing.image_url || 'https://placehold.co/600x400?text=No+Image';
+    // Fallback to legacy image_url
+    if (listing.image_url) {
+      if (listing.image_url.startsWith('/')) {
+        return `${API_BASE}${listing.image_url}`;
+      }
+      return listing.image_url;
+    }
+    return 'https://placehold.co/600x400?text=No+Image';
   }, [listing.photos, listing.image_url]);
 
   const distanceMi = useMemo(() => {
