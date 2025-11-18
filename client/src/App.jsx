@@ -122,6 +122,10 @@ export default function App() {
     } catch (error) {
       console.error('Logout failed:', error);
     }
+    try {
+      localStorage.removeItem('yardshare_token');
+    } catch { // ignore 
+      }
     
     setIsAuthenticated(false);
     setUser(null);

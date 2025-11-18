@@ -33,6 +33,9 @@ app.use(cors({
 	credentials: true,
 }))
 
+const { attachUserFromJWT } = require('./middleware/jwt')
+app.use(attachUserFromJWT)
+
 app.use(session({
 	secret: SESSION_SECRET,
 	resave: false,
@@ -45,7 +48,9 @@ app.use(session({
 }))
 
 app.use(passport.initialize())
-app.use(passport.session())
+// Sessions no longer required for auth, didn't remove it yet 
+// app.use(passport.session())
+
 
 app.get('/health', (req, res) => {
 	res.json({ ok: true })
