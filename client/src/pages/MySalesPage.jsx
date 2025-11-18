@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Layout } from './Layout'
-import { LoadingSpinner } from './LoadingSpinner'
-import { LocationPicker } from './LocationPicker'
+import { Layout } from '../components/shared/Layout'
+import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { LocationPicker } from '../components/LocationPicker'
+import { getPrimaryPhotoUrl, getAllPhotoUrls } from '../utils/photoHelpers'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function MySalesPage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const [listings, setListings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -100,8 +110,7 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
             <div key={l.id} className="border rounded-lg overflow-hidden bg-white">
               {
                 (() => {
-                  const photos = l.photos || []
-                  const src = Array.isArray(photos) && photos.length > 0 ? photos[0] : l.image_url
+                  const src = getPrimaryPhotoUrl(l.photos, l.image_url)
                   return src ? (<img src={src} alt={l.title} className="w-full h-40 object-cover" />) : null
                 })()
               }
@@ -121,9 +130,14 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                       ))
                     }
                     // Fallback to listing photos
-                    return (l.photos || []).slice(0, 4).map((p, i) => (
-                      <img key={i} src={p.url} alt="photo" className={`w-12 h-12 object-cover rounded ${p.is_primary ? 'ring-2 ring-emerald-500' : ''}`} />
-                    ))
+                    return (l.photos || []).slice(0, 4).map((p, i) => {
+                      // Handle both legacy (string) and new (object) formats
+                      const url = typeof p === 'string' ? p : p.url
+                      const isPrimary = typeof p === 'object' && p.is_primary
+                      return (
+                        <img key={typeof p === 'object' ? p.id || i : i} src={url} alt="photo" className={`w-12 h-12 object-cover rounded ${isPrimary ? 'ring-2 ring-emerald-500' : ''}`} />
+                      )
+                    })
                   })()}
                 </div>
                 <div className="flex items-center gap-2">
@@ -181,7 +195,7 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
                         longitude: l.longitude ?? null,
                         replacePhotos: false,
                         files: [],
-                        existingPhotos: photos, // Array of URL strings
+                        existingPhotos: photos, // Array of photo objects or legacy URL strings
                         primaryIndex: 0,
                         items: itemsData.length > 0 ? itemsData.map(it => ({
                           title: it.title || '',
@@ -209,7 +223,16 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
   )
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       {content}
       {showEdit && editForm && (
         <EditModal 
@@ -486,12 +509,18 @@ function EditModal({ categories, form, setForm, saving, onClose, onSave }) {
               <label className="block text-sm text-gray-700 mb-2">Current Listing Photos</label>
               {form.existingPhotos && form.existingPhotos.length > 0 ? (
                 <div className="grid grid-cols-4 gap-2">
-                  {form.existingPhotos.map((url, i) => (
-                    <div key={i} className="relative">
-                      <img src={url} alt={`Photo ${i + 1}`} className="w-full h-24 object-cover rounded" />
-                      {i === 0 && <span className="absolute bottom-0 left-0 bg-emerald-500 text-white text-xs px-1 rounded">Primary</span>}
-                    </div>
-                  ))}
+                  {form.existingPhotos.map((photo, i) => {
+                    // Handle both legacy (string) and new (object) formats
+                    const url = typeof photo === 'string' ? photo : photo.url
+                    const isPrimary = typeof photo === 'object' && photo.is_primary
+                    const photoId = typeof photo === 'object' ? photo.id : null
+                    return (
+                      <div key={photoId || i} className="relative">
+                        <img src={url} alt={`Photo ${i + 1}`} className="w-full h-24 object-cover rounded" />
+                        {isPrimary && <span className="absolute bottom-0 left-0 bg-emerald-500 text-white text-xs px-1 rounded">Primary</span>}
+                      </div>
+                    )
+                  })}
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 italic">No photos yet</p>
