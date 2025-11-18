@@ -9,11 +9,23 @@ const getUserListingFavorites = async (req, res) => {
     }
 
     const results = await pool.query(`
-      SELECT l.*, l.photo_urls as photos, u.username as seller_username, f.favorited_at
+      SELECT
+        l.*,
+        u.username as seller_username,
+        f.favorited_at,
+        COALESCE(
+          json_agg(
+            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY lp.position
+          ) FILTER (WHERE lp.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM favorites f
       JOIN listings l ON f.listing_id = l.id
       LEFT JOIN users u ON l.seller_id = u.id
+      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
       WHERE f.user_id = $1
+      GROUP BY l.id, u.username, f.favorited_at
       ORDER BY f.favorited_at DESC
     `, [user_id])
 
@@ -81,27 +93,51 @@ const getUserItemFavorites = async (req, res) => {
     const user_id = req.user ? req.user.id : null
     if (!user_id) return res.status(401).json({ error: 'Must be logged in' })
 
-    const u = await pool.query('SELECT favorite_item_ids FROM users WHERE id = $1', [user_id])
-    const favIds = (u.rows[0] && u.rows[0].favorite_item_ids) || []
-    if (!favIds || favIds.length === 0) return res.status(200).json([])
+    const results = await pool.query(`
+      SELECT
+        items.*,
+        listings.title as sale_title,
+        listings.location as sale_location,
+        c.name as category_name,
+        if.favorited_at
+      FROM item_favorites if
+      JOIN items ON if.item_id = items.id
+      JOIN listings ON items.listing_id = listings.id
+      LEFT JOIN categories c ON items.category_id = c.id
+      WHERE if.user_id = $1
+      ORDER BY if.favorited_at DESC
+    `, [user_id])
 
-    const q = await pool.query(`SELECT items.*, listings.title as sale_title, listings.location as sale_location FROM items JOIN listings ON items.listing_id = listings.id WHERE items.id = ANY($1)`, [favIds])
-    res.status(200).json(q.rows)
+    res.status(200).json(results.rows)
   } catch (error) {
     console.error('Error in getUserItemFavorites:', error)
     res.status(500).json({ error: error.message })
   }
 }
 
-// POST add item favorite (stores item id in users.favorite_item_ids array)
+// POST add item favorite
 const addItemFavorite = async (req, res) => {
   try {
     const user_id = req.user ? req.user.id : null
     if (!user_id) return res.status(401).json({ error: 'Must be logged in' })
     const itemId = parseInt(req.params.itemId)
 
-    await pool.query(`UPDATE users SET favorite_item_ids = CASE WHEN favorite_item_ids @> ARRAY[$1]::INTEGER[] THEN favorite_item_ids ELSE array_append(favorite_item_ids, $1) END WHERE id = $2`, [itemId, user_id])
-    res.status(200).json({ ok: true })
+    // Check if already favorited
+    const existing = await pool.query(
+      'SELECT * FROM item_favorites WHERE user_id = $1 AND item_id = $2',
+      [user_id, itemId]
+    )
+
+    if (existing.rows.length > 0) {
+      return res.status(200).json(existing.rows[0])
+    }
+
+    const results = await pool.query(
+      'INSERT INTO item_favorites (user_id, item_id, favorited_at) VALUES ($1, $2, NOW()) RETURNING *',
+      [user_id, itemId]
+    )
+
+    res.status(201).json(results.rows[0])
   } catch (error) {
     console.error('Error in addItemFavorite:', error)
     res.status(500).json({ error: error.message })
@@ -115,8 +151,12 @@ const removeItemFavorite = async (req, res) => {
     if (!user_id) return res.status(401).json({ error: 'Must be logged in' })
     const itemId = parseInt(req.params.itemId)
 
-    await pool.query(`UPDATE users SET favorite_item_ids = array_remove(favorite_item_ids, $1) WHERE id = $2`, [itemId, user_id])
-    res.status(200).json({ ok: true })
+    await pool.query(
+      'DELETE FROM item_favorites WHERE user_id = $1 AND item_id = $2',
+      [user_id, itemId]
+    )
+
+    res.status(200).json({ message: 'Item favorite removed' })
   } catch (error) {
     console.error('Error in removeItemFavorite:', error)
     res.status(500).json({ error: error.message })

@@ -30,9 +30,9 @@ const getItem = async (req, res) => {
     const { itemId } = req.params
     
     const result = await pool.query(`
-      SELECT 
+      SELECT
         items.*,
-        items.category as category_name,
+        c.name as category_name,
         listings.title as sale_title,
         listings.location as sale_location,
         listings.latitude,
@@ -42,6 +42,7 @@ const getItem = async (req, res) => {
         listings.end_time
       FROM items
       JOIN listings ON items.listing_id = listings.id
+      LEFT JOIN categories c ON items.category_id = c.id
       WHERE items.id = $1
     `, [itemId])
     
@@ -62,24 +63,25 @@ const getAllItems = async (req, res) => {
     const { category, search } = req.query
     
     let query = `
-      SELECT 
+      SELECT
         items.*,
-        items.category as category_name,
+        c.name as category_name,
         listings.title as sale_title,
         listings.location as sale_location,
         listings.latitude,
         listings.longitude
       FROM items
       JOIN listings ON items.listing_id = listings.id
+      LEFT JOIN categories c ON items.category_id = c.id
       WHERE items.sold = false AND listings.is_active = true
     `
-    
+
     const params = []
-    
-    // Filter by category
+
+    // Filter by category name
     if (category) {
       params.push(category)
-      query += ` AND items.category = $${params.length}`
+      query += ` AND c.name = $${params.length}`
     }
     
     // Search by title/description
@@ -104,10 +106,11 @@ const getItemsByListing = async (req, res) => {
     const { listingId } = req.params
     
     const result = await pool.query(`
-      SELECT 
+      SELECT
         items.*,
-        items.category as category_name
+        c.name as category_name
       FROM items
+      LEFT JOIN categories c ON items.category_id = c.id
       WHERE items.listing_id = $1
       ORDER BY items.display_order, items.created_at
     `, [listingId])
@@ -123,19 +126,19 @@ const getItemsByListing = async (req, res) => {
 const createItem = async (req, res) => {
   try {
     const { listingId } = req.params
-    const { title, description, price, condition, category, image_url } = req.body
-    
+    const { title, description, price, condition, category_id, image_url } = req.body
+
     // Validate required fields
     if (!title || !price || !condition) {
       return res.status(400).json({ error: 'Title, price, and condition are required' })
     }
-    
+
     // Check if listing exists and user owns it
     const listingCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [listingId])
     if (listingCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Listing not found' })
     }
-    
+
     if (req.user && listingCheck.rows[0].seller_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to add items to this listing' })
     }
@@ -145,8 +148,8 @@ const createItem = async (req, res) => {
     // If a file was uploaded, upload to Cloudinary
     if (req.file) {
       try {
-        const result = await uploadBufferToCloudinary(req.file.buffer, { 
-          folder: process.env.CLOUDINARY_FOLDER || 'yardshare/items' 
+        const result = await uploadBufferToCloudinary(req.file.buffer, {
+          folder: process.env.CLOUDINARY_FOLDER || 'yardshare/items'
         })
         finalImageUrl = result.secure_url
       } catch (uploadErr) {
@@ -154,12 +157,12 @@ const createItem = async (req, res) => {
         return res.status(500).json({ error: 'Image upload failed' })
       }
     }
-    
+
     const result = await pool.query(`
-      INSERT INTO items (listing_id, title, description, price, condition, category, image_url)
+      INSERT INTO items (listing_id, title, description, price, condition, category_id, image_url)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
-    `, [listingId, title, description, price, condition, category, finalImageUrl])
+    `, [listingId, title, description, price, condition, category_id, finalImageUrl])
     
     res.status(201).json(result.rows[0])
   } catch (error) {
@@ -172,20 +175,20 @@ const createItem = async (req, res) => {
 const updateItem = async (req, res) => {
   try {
     const { itemId } = req.params
-    const { title, description, price, condition, category, image_url, sold } = req.body
-    
+    const { title, description, price, condition, category_id, image_url, sold } = req.body
+
     // Check ownership
     const ownerCheck = await pool.query(`
-      SELECT listings.seller_id 
-      FROM items 
-      JOIN listings ON items.listing_id = listings.id 
+      SELECT listings.seller_id
+      FROM items
+      JOIN listings ON items.listing_id = listings.id
       WHERE items.id = $1
     `, [itemId])
-    
+
     if (ownerCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })
     }
-    
+
     if (req.user && ownerCheck.rows[0].seller_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to edit this item' })
     }
@@ -195,8 +198,8 @@ const updateItem = async (req, res) => {
     // If a file was uploaded, upload to Cloudinary
     if (req.file) {
       try {
-        const result = await uploadBufferToCloudinary(req.file.buffer, { 
-          folder: process.env.CLOUDINARY_FOLDER || 'yardshare/items' 
+        const result = await uploadBufferToCloudinary(req.file.buffer, {
+          folder: process.env.CLOUDINARY_FOLDER || 'yardshare/items'
         })
         finalImageUrl = result.secure_url
       } catch (uploadErr) {
@@ -204,20 +207,20 @@ const updateItem = async (req, res) => {
         return res.status(500).json({ error: 'Image upload failed' })
       }
     }
-    
+
     const result = await pool.query(`
       UPDATE items
-      SET 
+      SET
         title = COALESCE($1, title),
         description = COALESCE($2, description),
         price = COALESCE($3, price),
         condition = COALESCE($4, condition),
-        category = COALESCE($5, category),
+        category_id = COALESCE($5, category_id),
         image_url = COALESCE($6, image_url),
         sold = COALESCE($7, sold)
       WHERE id = $8
       RETURNING *
-    `, [title, description, price, condition, category, finalImageUrl, sold, itemId])
+    `, [title, description, price, condition, category_id, finalImageUrl, sold, itemId])
     
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })

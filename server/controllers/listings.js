@@ -33,12 +33,13 @@ const getAllListings = async (req, res) => {
     const q = req.query.q ? String(req.query.q).trim() : null
 
     const results = await pool.query(`
-      SELECT 
-        l.*, 
-        u.username as seller_username, 
+      SELECT
+        l.*,
+        u.username as seller_username,
         u.avatarurl as seller_avatar,
+        c.name as category_name,
         /* Distance in KM if lat/lng provided */
-        CASE 
+        CASE
           WHEN $1::numeric IS NULL OR $2::numeric IS NULL OR l.latitude IS NULL OR l.longitude IS NULL THEN NULL
           ELSE (
             6371 * acos(
@@ -51,28 +52,27 @@ const getAllListings = async (req, res) => {
         /* Count unsold items */
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
-        ARRAY_AGG(DISTINCT i.category) FILTER (WHERE i.category IS NOT NULL) as item_categories,
-        /* Checked-in users from attendee_ids array */
+        ARRAY_AGG(DISTINCT ic.name) FILTER (WHERE ic.name IS NOT NULL) as item_categories,
+        /* Photos from listing_photos table */
         COALESCE(
-          (
-            SELECT json_agg(jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl))
-            FROM users au
-            WHERE au.id = ANY(l.attendee_ids)
-          ), '[]'
-        ) AS checked_in_users,
-        /* Check-in count */
-        COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
-        /* Photos */
-        l.photo_urls as photos
+          json_agg(
+            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY lp.position
+          ) FILTER (WHERE lp.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
+      LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN items i ON i.listing_id = l.id
+      LEFT JOIN categories ic ON i.category_id = ic.id
+      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
       WHERE l.is_active = true
       AND (
         /* Text search */
-        $4::text IS NULL OR 
-        l.title ILIKE '%' || $4::text || '%' OR 
-        l.description ILIKE '%' || $4::text || '%' OR 
+        $4::text IS NULL OR
+        l.title ILIKE '%' || $4::text || '%' OR
+        l.description ILIKE '%' || $4::text || '%' OR
         l.location ILIKE '%' || $4::text || '%'
       )
       AND (
@@ -87,8 +87,8 @@ const getAllListings = async (req, res) => {
           ) <= $3::numeric
         )
       )
-      GROUP BY l.id, u.username, u.avatarurl
-      ORDER BY 
+      GROUP BY l.id, u.username, u.avatarurl, c.name
+      ORDER BY
         CASE WHEN $1::numeric IS NULL OR $2::numeric IS NULL THEN NULL ELSE 1 END,
         CASE WHEN $1::numeric IS NULL OR $2::numeric IS NULL THEN NULL ELSE (
           6371 * acos(
@@ -111,31 +111,31 @@ const getListing = async (req, res) => {
   try {
     const id = parseInt(req.params.listingId)
     const results = await pool.query(`
-      SELECT 
-        l.*, 
-        u.username as seller_username, 
+      SELECT
+        l.*,
+        u.username as seller_username,
         u.avatarurl as seller_avatar,
+        c.name as category_name,
         /* Count unsold items */
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
         /* Array of unique category names from items */
-        ARRAY_AGG(DISTINCT i.category) FILTER (WHERE i.category IS NOT NULL) as item_categories,
-        /* Checked-in users from attendee_ids array */
+        ARRAY_AGG(DISTINCT ic.name) FILTER (WHERE ic.name IS NOT NULL) as item_categories,
+        /* Photos from listing_photos table */
         COALESCE(
-          (
-            SELECT json_agg(jsonb_build_object('id', au.id, 'username', au.username, 'avatarurl', au.avatarurl))
-            FROM users au
-            WHERE au.id = ANY(l.attendee_ids)
-          ), '[]'
-        ) AS checked_in_users,
-        /* Check-in count */
-        COALESCE(array_length(l.attendee_ids, 1), 0) AS check_in_count,
-        /* Photos as array of URLs */
-        l.photo_urls as photos
+          json_agg(
+            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY lp.position
+          ) FILTER (WHERE lp.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM listings l
       LEFT JOIN users u ON l.seller_id = u.id
+      LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN items i ON i.listing_id = l.id
+      LEFT JOIN categories ic ON i.category_id = ic.id
+      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
       WHERE l.id = $1
-      GROUP BY l.id, u.username, u.avatarurl
+      GROUP BY l.id, u.username, u.avatarurl, c.name
     `, [id])
     
     if (results.rows.length === 0) {
@@ -152,13 +152,13 @@ const getListing = async (req, res) => {
 // POST new listing
 const createListing = async (req, res) => {
   try {
-    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex, items } = req.body
+    const { title, description, category_id, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex, items } = req.body
     const seller_id = req.user ? req.user.id : null
-    
+
     if (!seller_id) {
       return res.status(401).json({ error: 'Must be logged in to create listing' })
     }
-    
+
     // VALIDATION
     if (!title || title.trim().length === 0) {
       return res.status(400).json({ error: 'Title is required' })
@@ -172,39 +172,39 @@ const createListing = async (req, res) => {
     if (longitude && (isNaN(parseFloat(longitude)) || parseFloat(longitude) < -180 || parseFloat(longitude) > 180)) {
       return res.status(400).json({ error: 'Invalid longitude' })
     }
-    
+
     // Use a transaction so listing, photos, and items are inserted atomically
     await pool.query('BEGIN')
     const results = await pool.query(`
-      INSERT INTO listings (seller_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
+      INSERT INTO listings (seller_id, category_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
       RETURNING *
-    `, [seller_id, title, description || '', sale_date || null, start_time || null, end_time || null, pickup_notes || '', location || '', latitude || null, longitude || null])
+    `, [seller_id, category_id || null, title, description || '', sale_date || null, start_time || null, end_time || null, pickup_notes || '', location || '', latitude || null, longitude || null])
 
     const listing = results.rows[0]
 
-    // If files uploaded, upload to Cloudinary and store URLs in photo_urls array
+    // If files uploaded, upload to Cloudinary and store in listing_photos table
     // Filter only files with fieldname 'photos' (listing photos)
     const allFiles = req.files || []
     const listingPhotoFiles = allFiles.filter(f => f.fieldname === 'photos')
-    const uploadedPhotoUrls = []
     if (listingPhotoFiles.length > 0) {
+      const primaryIdx = primaryIndex !== undefined ? parseInt(primaryIndex) : 0
       for (let i = 0; i < listingPhotoFiles.length; i++) {
         const f = listingPhotoFiles[i]
         try {
           const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
           const url = result.secure_url || result.url
-          uploadedPhotoUrls.push(url)
+          const isPrimary = (i === primaryIdx)
+
+          await pool.query(`
+            INSERT INTO listing_photos (listing_id, url, is_primary, position)
+            VALUES ($1, $2, $3, $4)
+          `, [listing.id, url, isPrimary, i])
         } catch (uploadErr) {
           console.error('Cloudinary upload failed:', uploadErr)
           throw uploadErr
         }
       }
-      // Update listing with photo URLs
-      await pool.query(
-        `UPDATE listings SET photo_urls = $1 WHERE id = $2`,
-        [uploadedPhotoUrls, listing.id]
-      )
     }
 
     // If items were provided (JSON array or stringified JSON), insert them into `items` table
@@ -258,7 +258,7 @@ const createListing = async (req, res) => {
             }
             
             await pool.query(`
-              INSERT INTO items (listing_id, category, title, description, price, condition, image_url, display_order)
+              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             `, [listing.id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
           }
@@ -270,12 +270,23 @@ const createListing = async (req, res) => {
       throw innerErr
     }
 
-    // Return listing with photos from photo_urls
-    const withPhotos = await pool.query(
-      `SELECT * FROM listings WHERE id = $1`,
-      [listing.id]
-    )
-    
+    // Return listing with photos from listing_photos table
+    const withPhotos = await pool.query(`
+      SELECT
+        l.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY lp.position
+          ) FILTER (WHERE lp.id IS NOT NULL),
+          '[]'::json
+        ) as photos
+      FROM listings l
+      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
+      WHERE l.id = $1
+      GROUP BY l.id
+    `, [listing.id])
+
     await pool.query('COMMIT')
     res.status(201).json(withPhotos.rows[0])
   } catch (error) {
@@ -294,8 +305,8 @@ const createListing = async (req, res) => {
 const updateListing = async (req, res) => {
   try {
     const id = parseInt(req.params.listingId)
-    const { title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, is_available, photos, primaryIndex, items } = req.body
-    
+    const { title, description, category_id, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active, is_available, photos, primaryIndex, items } = req.body
+
     // Check ownership
     const ownerCheck = await pool.query('SELECT seller_id FROM listings WHERE id = $1', [id])
     if (ownerCheck.rows.length === 0) {
@@ -304,7 +315,7 @@ const updateListing = async (req, res) => {
     if (req.user && ownerCheck.rows[0].seller_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to edit this listing' })
     }
-    
+
     // Support frontend `is_available` field (maps to `is_active` in DB)
     const finalIsActive = (is_active !== undefined) ? is_active : (is_available !== undefined ? is_available : null)
 
@@ -312,55 +323,67 @@ const updateListing = async (req, res) => {
       UPDATE listings
       SET title = COALESCE($1, title),
           description = COALESCE($2, description),
-          sale_date = COALESCE($3, sale_date),
-          start_time = COALESCE($4, start_time),
-          end_time = COALESCE($5, end_time),
-          pickup_notes = COALESCE($6, pickup_notes),
-          location = COALESCE($7, location),
-          latitude = COALESCE($8, latitude),
-          longitude = COALESCE($9, longitude),
-          is_active = COALESCE($10, is_active)
-      WHERE id = $11
+          category_id = COALESCE($3, category_id),
+          sale_date = COALESCE($4, sale_date),
+          start_time = COALESCE($5, start_time),
+          end_time = COALESCE($6, end_time),
+          pickup_notes = COALESCE($7, pickup_notes),
+          location = COALESCE($8, location),
+          latitude = COALESCE($9, latitude),
+          longitude = COALESCE($10, longitude),
+          is_active = COALESCE($11, is_active)
+      WHERE id = $12
       RETURNING *
-    `, [title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, finalIsActive, id])
+    `, [title, description, category_id, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, finalIsActive, id])
 
     const updated = results.rows[0]
 
-    // If photos provided (URLs) or files uploaded, replace photos in photo_urls array
+    // If photos provided (URLs) or files uploaded, replace photos in listing_photos table
     // ONLY process files with fieldname "photos" for listing photos, not item photos
     const allFiles = req.files || []
-    const listingPhotoFiles = Array.isArray(allFiles) 
+    const listingPhotoFiles = Array.isArray(allFiles)
       ? allFiles.filter(f => f.fieldname === 'photos')
       : []
-    
+
     if (Array.isArray(photos) || listingPhotoFiles.length > 0) {
-      const uploadedPhotoUrls = []
-      
-      // If photo URLs provided directly, use them
+      // Delete existing photos
+      await pool.query('DELETE FROM listing_photos WHERE listing_id = $1', [id])
+
+      const primaryIdx = primaryIndex !== undefined ? parseInt(primaryIndex) : 0
+      let position = 0
+
+      // If photo URLs provided directly, insert them
       if (Array.isArray(photos) && photos.length > 0) {
-        uploadedPhotoUrls.push(...photos)
+        for (let i = 0; i < photos.length; i++) {
+          const isPrimary = (position === primaryIdx)
+          await pool.query(`
+            INSERT INTO listing_photos (listing_id, url, is_primary, position)
+            VALUES ($1, $2, $3, $4)
+          `, [id, photos[i], isPrimary, position])
+          position++
+        }
       }
-      
-      // Upload new files to Cloudinary
+
+      // Upload new files to Cloudinary and insert
       if (listingPhotoFiles.length > 0) {
         for (let i = 0; i < listingPhotoFiles.length; i++) {
           const f = listingPhotoFiles[i]
           try {
             const result = await uploadBufferToCloudinary(f.buffer, { folder: process.env.CLOUDINARY_FOLDER || 'yardshare' })
             const url = result.secure_url || result.url
-            uploadedPhotoUrls.push(url)
+            const isPrimary = (position === primaryIdx)
+
+            await pool.query(`
+              INSERT INTO listing_photos (listing_id, url, is_primary, position)
+              VALUES ($1, $2, $3, $4)
+            `, [id, url, isPrimary, position])
+            position++
           } catch (uploadErr) {
             console.error('Cloudinary upload failed during update:', uploadErr)
             throw uploadErr
           }
         }
       }
-      
-      // Update photo_urls array in listings table
-      await pool.query(
-        `UPDATE listings SET photo_urls = $1 WHERE id = $2`,
-        [uploadedPhotoUrls, id]
-      )
     }
     
     // If items provided (JSON array or stringified JSON), replace items
@@ -416,7 +439,7 @@ const updateListing = async (req, res) => {
             }
             
             await pool.query(`
-              INSERT INTO items (listing_id, category, title, description, price, condition, image_url, display_order)
+              INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             `, [id, itemCategory, itemTitle, itemDescription, itemPrice, itemCondition, itemImage, i])
           }
@@ -427,10 +450,21 @@ const updateListing = async (req, res) => {
       throw innerErr
     }
 
-    const withPhotos = await pool.query(
-      `SELECT * FROM listings WHERE id = $1`,
-      [id]
-    )
+    const withPhotos = await pool.query(`
+      SELECT
+        l.*,
+        COALESCE(
+          json_agg(
+            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY lp.position
+          ) FILTER (WHERE lp.id IS NOT NULL),
+          '[]'::json
+        ) as photos
+      FROM listings l
+      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
+      WHERE l.id = $1
+      GROUP BY l.id
+    `, [id])
 
     res.status(200).json(withPhotos.rows[0])
   } catch (error) {
@@ -453,9 +487,11 @@ const deleteListing = async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to delete this listing' })
     }
     
-    // Delete associated favorites first
+    // Delete associated records (CASCADE should handle most of these, but being explicit)
+    await pool.query('DELETE FROM listing_photos WHERE listing_id = $1', [id])
     await pool.query('DELETE FROM favorites WHERE listing_id = $1', [id])
-    
+    await pool.query('DELETE FROM item_favorites WHERE item_id IN (SELECT id FROM items WHERE listing_id = $1)', [id])
+    await pool.query('DELETE FROM items WHERE listing_id = $1', [id])
     await pool.query('DELETE FROM listings WHERE id = $1', [id])
     
     res.status(200).json({ message: 'Listing deleted successfully' })
@@ -474,16 +510,25 @@ const getSellerListings = async (req, res) => {
     }
     
     const results = await pool.query(`
-      SELECT 
-        l.*, 
+      SELECT
+        l.*,
+        c.name as category_name,
         COUNT(DISTINCT i.id) FILTER (WHERE i.sold = false) as item_count,
-        ARRAY_AGG(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) as item_categories,
-        l.photo_urls as photos
+        ARRAY_AGG(DISTINCT ic.name) FILTER (WHERE ic.name IS NOT NULL) as item_categories,
+        COALESCE(
+          json_agg(
+            json_build_object('id', lp.id, 'url', lp.url, 'is_primary', lp.is_primary, 'position', lp.position)
+            ORDER BY lp.position
+          ) FILTER (WHERE lp.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM listings l
+      LEFT JOIN categories c ON l.category_id = c.id
       LEFT JOIN items i ON i.listing_id = l.id
-      LEFT JOIN categories c ON i.category::INTEGER = c.id
+      LEFT JOIN categories ic ON i.category_id = ic.id
+      LEFT JOIN listing_photos lp ON l.id = lp.listing_id
       WHERE l.seller_id = $1
-      GROUP BY l.id
+      GROUP BY l.id, c.name
       ORDER BY l.created_at DESC
     `, [seller_id])
     
@@ -535,18 +580,11 @@ const getNearbyCount = async (req, res) => {
 }
 
 // POST check-in
+// TODO: Implement attendees table for check-ins
 const checkInListing = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.listingId)
-    const userId = req.user ? req.user.id : null
-    if (!userId) return res.status(401).json({ error: 'Must be logged in to check in' })
-
-    await pool.query(
-      `UPDATE listings SET attendee_ids = array_append(attendee_ids, $1) WHERE id = $2 AND NOT ($1 = ANY(attendee_ids))`,
-      [userId, listingId]
-    )
-
-    res.status(200).json({ ok: true })
+    // Feature temporarily disabled - needs attendees table
+    res.status(501).json({ error: 'Check-in feature temporarily disabled during refactor' })
   } catch (error) {
     console.error('Error in checkInListing:', error)
     res.status(500).json({ error: error.message })
@@ -554,15 +592,11 @@ const checkInListing = async (req, res) => {
 }
 
 // DELETE check-in
+// TODO: Implement attendees table for check-outs
 const uncheckInListing = async (req, res) => {
   try {
-    const listingId = parseInt(req.params.listingId)
-    const userId = req.user ? req.user.id : null
-    if (!userId) return res.status(401).json({ error: 'Must be logged in to un-check in' })
-
-    await pool.query(`UPDATE listings SET attendee_ids = array_remove(attendee_ids, $1) WHERE id = $2`, [userId, listingId])
-
-    res.status(200).json({ ok: true })
+    // Feature temporarily disabled - needs attendees table
+    res.status(501).json({ error: 'Check-out feature temporarily disabled during refactor' })
   } catch (error) {
     console.error('Error in uncheckInListing:', error)
     res.status(500).json({ error: error.message })
