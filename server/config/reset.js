@@ -8,7 +8,7 @@ const dropTables = async () => {
     await pool.query('DROP TABLE IF EXISTS attendees CASCADE')
     await pool.query('DROP TABLE IF EXISTS items CASCADE')
     await pool.query('DROP TABLE IF EXISTS listing_photos CASCADE')
-    await pool.query('DROP TABLE IF EXISTS favorites CASCADE')
+    await pool.query('DROP TABLE IF EXISTS listing_favorites CASCADE')
     await pool.query('DROP TABLE IF EXISTS listings CASCADE')
     await pool.query('DROP TABLE IF EXISTS categories CASCADE')
     await pool.query('DROP TABLE IF EXISTS user_profiles CASCADE')
@@ -120,9 +120,9 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_items_listing_id ON items(listing_id)
     `)
 
-    // Favorites table (junction table for user favorites)
+    // Listing favorites table (junction table for user favorites)
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS favorites (
+      CREATE TABLE IF NOT EXISTS listing_favorites (
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
         favorited_at TIMESTAMP DEFAULT NOW(),

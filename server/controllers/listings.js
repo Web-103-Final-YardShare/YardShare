@@ -501,7 +501,7 @@ const deleteListing = async (req, res) => {
     
     // Delete associated records (CASCADE should handle most of these, but being explicit)
     await pool.query('DELETE FROM listing_photos WHERE listing_id = $1', [id])
-    await pool.query('DELETE FROM favorites WHERE listing_id = $1', [id])
+    await pool.query('DELETE FROM listing_favorites WHERE listing_id = $1', [id])
     await pool.query('DELETE FROM item_favorites WHERE item_id IN (SELECT id FROM items WHERE listing_id = $1)', [id])
     await pool.query('DELETE FROM items WHERE listing_id = $1', [id])
     await pool.query('DELETE FROM listings WHERE id = $1', [id])

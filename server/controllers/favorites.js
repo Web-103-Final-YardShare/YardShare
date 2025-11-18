@@ -20,7 +20,7 @@ const getUserListingFavorites = async (req, res) => {
           ) FILTER (WHERE lp.id IS NOT NULL),
           '[]'::json
         ) as photos
-      FROM favorites f
+      FROM listing_favorites f
       JOIN listings l ON f.listing_id = l.id
       LEFT JOIN users u ON l.seller_id = u.id
       LEFT JOIN listing_photos lp ON l.id = lp.listing_id
@@ -47,16 +47,16 @@ const addFavorite = async (req, res) => {
     
     // Check if already favorited
     const existing = await pool.query(
-      'SELECT * FROM favorites WHERE user_id = $1 AND listing_id = $2',
+      'SELECT * FROM listing_favorites WHERE user_id = $1 AND listing_id = $2',
       [user_id, listing_id]
     )
-    
+
     if (existing.rows.length > 0) {
       return res.status(200).json(existing.rows[0])
     }
-    
+
     const results = await pool.query(
-      'INSERT INTO favorites (user_id, listing_id, favorited_at) VALUES ($1, $2, NOW()) RETURNING *',
+      'INSERT INTO listing_favorites (user_id, listing_id, favorited_at) VALUES ($1, $2, NOW()) RETURNING *',
       [user_id, listing_id]
     )
     
@@ -75,12 +75,12 @@ const removeFavorite = async (req, res) => {
     }
     
     const listing_id = parseInt(req.params.listingId)
-    
+
     await pool.query(
-      'DELETE FROM favorites WHERE user_id = $1 AND listing_id = $2',
+      'DELETE FROM listing_favorites WHERE user_id = $1 AND listing_id = $2',
       [user_id, listing_id]
     )
-    
+
     res.status(200).json({ message: 'Favorite removed' })
   } catch (error) {
     res.status(500).json({ error: error.message })
