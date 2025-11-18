@@ -33,7 +33,17 @@ function ListingDetailModal({ listingId, isOpen, onClose, isAuthenticated, user,
   )
 }
 
-export function SavedPage({ isAuthenticated, user, favorites, savedItemsCount = 0, onLogout }) {
+export function SavedPage({
+  isAuthenticated,
+  user,
+  favorites,
+  savedItemsCount = 0,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const [savedListings, setSavedListings] = useState([])
   const [savedItems, setSavedItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -119,7 +129,16 @@ export function SavedPage({ isAuthenticated, user, favorites, savedItemsCount = 
   }
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={(favorites?.length || 0) + savedItemsCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={(favorites?.length || 0) + savedItemsCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       <div className="max-w-7xl mx-auto px-6 py-8">
         <h1 className="text-3xl font-bold mb-8">Saved Favorites</h1>
         

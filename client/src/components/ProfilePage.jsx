@@ -6,7 +6,16 @@ import toast from 'react-hot-toast'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-export function ProfilePage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function ProfilePage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -85,7 +94,16 @@ export function ProfilePage({ isAuthenticated, user, favoritesCount, onLogout })
 
   if (!isAuthenticated) {
     return (
-      <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+      <Layout
+        isAuthenticated={isAuthenticated}
+        user={user}
+        favoritesCount={favoritesCount}
+        onLogout={onLogout}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        location={location}
+        setLocation={setLocation}
+      >
         <div className="max-w-4xl mx-auto px-6 py-8">
           <p className="text-red-600">Please log in to view your profile</p>
         </div>
@@ -95,7 +113,16 @@ export function ProfilePage({ isAuthenticated, user, favoritesCount, onLogout })
 
   if (loading) {
     return (
-      <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+      <Layout
+        isAuthenticated={isAuthenticated}
+        user={user}
+        favoritesCount={favoritesCount}
+        onLogout={onLogout}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        location={location}
+        setLocation={setLocation}
+      >
         <div className="max-w-4xl mx-auto px-6 py-8">
           <LoadingSpinner text="Loading profile..." />
         </div>
@@ -104,7 +131,16 @@ export function ProfilePage({ isAuthenticated, user, favoritesCount, onLogout })
   }
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           {/* Header Section */}

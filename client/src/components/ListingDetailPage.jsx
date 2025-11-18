@@ -500,11 +500,29 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
 }
 
 // Page wrapper component
-export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function ListingDetailPage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const { id } = useParams()
-  
+
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       <ListingDetailContent listingId={id} isAuthenticated={isAuthenticated} user={user} />
     </Layout>
   )
