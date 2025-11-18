@@ -182,7 +182,7 @@ export function ItemDetailModal({ itemId, isOpen, onClose, isAuthenticated, onFa
                   {/* Badges */}
                   <div className="flex flex-wrap gap-2 mb-6">
                     {(() => {
-                      const category = item.category || item.category_name || null
+                      const category = item.category_name || null
                       return (
                         <>
                           {category && (

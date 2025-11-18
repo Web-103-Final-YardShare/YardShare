@@ -52,9 +52,9 @@ export function ItemCard({ item, isSaved, onSave, onItemClick }) {
         </div>
         
         <div className="flex flex-wrap gap-2 mb-3 items-center">
-          {/** support both `category` and `category_name` from API */}
+          {/** Backend returns category_name via SQL JOIN */}
           {(() => {
-            const cat = item.category || item.category_name || null
+            const cat = item.category_name || null
             return (
               <>
                 <span className={`text-xs font-medium px-2 py-1 rounded inline-flex items-center gap-2 ${
