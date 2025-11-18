@@ -73,46 +73,52 @@ All backend controllers and database schema have been updated to use the new nor
 - Verify `category_name` is returned by backend (should be via JOIN)
 - If backend returns `category_id` only, may need to fetch category name
 
+### 9. ProfilePage (`client/src/components/ProfilePage.jsx`)
+- ✅ Complete profile page implemented with full CRUD functionality
+- ✅ Backend endpoints created (`GET /api/users/profile`, `PUT /api/users/profile`)
+- ✅ View mode displays user avatar, bio, phone, and preferred contact
+- ✅ Edit mode with form validation (500 character bio limit)
+- ✅ Upsert logic (creates or updates profile seamlessly)
+- ✅ Privacy features (phone number only visible to user)
+- ✅ Loading states, error handling, and toast notifications
+- ✅ Responsive design with gradient header and icons
+- ✅ Integration with `user_profiles` table
+
 ### LOW PRIORITY (Future Features)
 
-#### 2. ProfilePage (`client/src/components/ProfilePage.jsx`)
-**Status:** 🆕 New Feature Needed
-**Current:** Placeholder only
-**Changes Needed:**
-- Create complete profile page
-- Display bio and phone from `user_profiles` table
-- Add edit functionality
-- Form validation
-
-**Implementation:**
-```javascript
-// Fetch user profile
-const res = await fetch(`${API_BASE}/api/users/${userId}/profile`);
-const profile = await res.json();
-
-// Display bio, phone, preferred_contact
-// Add edit form with PUT to /api/users/profile
-```
-
-**Note:** Requires new backend endpoint `/api/users/profile` (not yet implemented)
+#### 1. MapView Category Verification
+**Status:** ⚠️ Optional - Verify category handling
 
 ## Testing Checklist
 
+### Listings & Items
 - [ ] Create a new yard sale with photos
 - [ ] Edit existing yard sale
 - [ ] View yard sale details (check-in button should work)
 - [ ] Check in to a yard sale event
 - [ ] View checked-in users in "Who's Going" section
-- [ ] Favorite/unfavorite listings
-- [ ] Favorite/unfavorite items
-- [ ] View saved listings page
-- [ ] Filter by categories (should load from API)
-- [ ] Search listings
-- [ ] View map with listings
 - [ ] Create items with categories
 - [ ] Edit items
 - [ ] Verify photo helpers work with both legacy and new formats
 - [ ] Verify primary photo indicator appears correctly
+
+### Favorites & Saved Items
+- [ ] Favorite/unfavorite listings
+- [ ] Favorite/unfavorite items
+- [ ] View saved listings page
+
+### Search & Filters
+- [ ] Filter by categories (should load from API)
+- [ ] Search listings
+- [ ] View map with listings
+
+### User Profile
+- [ ] View profile page
+- [ ] Edit profile (bio, phone, preferred contact)
+- [ ] Save profile changes
+- [ ] Cancel profile edits
+- [ ] Verify phone number is private
+- [ ] Verify profile persists across sessions
 
 ## API Endpoints That Changed
 
@@ -135,6 +141,11 @@ const profile = await res.json();
 - **GET /api/favorites/items** - Returns full item objects (with JOINs)
 - Backend uses junction tables but returns complete objects for frontend convenience
 
+### User Profiles (New)
+- **GET /api/users/profile** - Get current user's profile (bio, phone, preferred_contact)
+- **PUT /api/users/profile** - Update user profile (upsert: creates or updates)
+- **GET /api/users/:username** - Get public profile (excludes phone number)
+
 ## Backwards Compatibility
 
 The photo helper utilities support both formats:
@@ -151,11 +162,14 @@ This allows gradual migration and prevents breaking existing listings.
 3. ✅ ItemCard/ItemDetailPage (simplified category handling)
 4. ✅ FilterDialog (dynamic category fetch from API)
 5. ✅ App.jsx (verified favorites handling)
+6. ✅ ProfilePage (full CRUD implementation with user_profiles integration)
 
 ### 🚧 Remaining Work
 1. Test all functionality (see Testing Checklist above)
-2. Consider implementing ProfilePage (requires new backend endpoint)
-3. Optional: Update MapView to verify category handling
+2. Optional: Update MapView to verify category handling
+
+### 🎉 Migration Complete!
+All critical frontend and backend updates have been implemented. The application now uses a fully normalized database schema with proper junction tables, photo objects, and user profiles.
 
 ## Files Not Requiring Changes
 
