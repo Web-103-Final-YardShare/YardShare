@@ -167,10 +167,22 @@ const getListing = async (req, res) => {
 const createListing = async (req, res) => {
   try {
     const { title, description, category_id, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, photos, primaryIndex, items } = req.body
+    console.log('[createListing] req.user:', req.user);
     const seller_id = req.user ? req.user.id : null
+    console.log('[createListing] seller_id:', seller_id);
 
     if (!seller_id) {
+      console.error('[createListing] No seller_id - user not authenticated');
       return res.status(401).json({ error: 'Must be logged in to create listing' })
+    }
+
+    // Verify user exists in database
+    const userCheck = await pool.query('SELECT id FROM users WHERE id = $1', [seller_id]);
+    console.log('[createListing] User exists in DB:', userCheck.rows.length > 0, 'user_id:', seller_id);
+
+    if (userCheck.rows.length === 0) {
+      console.error('[createListing] User not found in database:', seller_id);
+      return res.status(401).json({ error: 'User account not found. Please log out and log in again.' })
     }
 
     // VALIDATION
@@ -189,11 +201,20 @@ const createListing = async (req, res) => {
 
     // Use a transaction so listing, photos, and items are inserted atomically
     await pool.query('BEGIN')
-    const results = await pool.query(`
-      INSERT INTO listings (seller_id, category_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
-      RETURNING *
-    `, [seller_id, category_id || null, title, description || '', sale_date || null, start_time || null, end_time || null, pickup_notes || '', location || '', latitude || null, longitude || null])
+    console.log('[createListing] Inserting listing with seller_id:', seller_id, 'category_id:', category_id);
+    let results;
+    try {
+      results = await pool.query(`
+        INSERT INTO listings (seller_id, category_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
+        RETURNING *
+      `, [seller_id, category_id || null, title, description || '', sale_date || null, start_time || null, end_time || null, pickup_notes || '', location || '', latitude || null, longitude || null])
+    } catch (insertError) {
+      console.error('[createListing] INSERT failed:', insertError.message);
+      console.error('[createListing] INSERT error detail:', insertError.detail);
+      console.error('[createListing] Parameters:', { seller_id, category_id, title });
+      throw insertError;
+    }
 
     const listing = results.rows[0]
 
