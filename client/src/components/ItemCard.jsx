@@ -1,5 +1,5 @@
-import { Heart } from 'lucide-react'
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
+import { FavoriteButton } from './FavoriteButton'
 
 export function ItemCard({ item, isSaved, onSave, onItemClick }) {
 
@@ -79,24 +79,18 @@ export function ItemCard({ item, isSaved, onSave, onItemClick }) {
         {item.description && (
           <p className="text-sm text-gray-600 line-clamp-3 mb-3">{item.description}</p>
         )}
-        
-        <button 
-          onClick={(e) => {
-            e.stopPropagation()
-            onSave(item.id)
-          }}
+
+        <FavoriteButton
+          type="item"
+          id={item.id}
+          isSaved={isSaved}
+          onToggle={onSave}
+          isAuthenticated={true}
           disabled={item.sold}
-          className={`w-full py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors ${
-            item.sold 
-              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-              : isSaved
-                ? 'bg-red-50 text-red-600 hover:bg-red-100 border-2 border-red-200'
-                : 'bg-emerald-600 text-white hover:bg-emerald-700'
-          }`}
-        >
-          <Heart className={`w-4 h-4 ${isSaved ? 'fill-red-500' : ''}`} />
-          {item.sold ? 'Sold' : isSaved ? 'Saved' : 'Save Item'}
-        </button>
+          label={item.sold ? 'Sold' : null}
+          className="w-full py-2.5 rounded-lg font-medium text-sm"
+          size="sm"
+        />
       </div>
     </div>
   )

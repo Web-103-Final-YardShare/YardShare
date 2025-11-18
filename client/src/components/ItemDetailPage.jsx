@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Heart, MapPin, X, ExternalLink } from 'lucide-react'
+import { MapPin, X, ExternalLink } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { LoadingSpinner } from './LoadingSpinner'
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
+import { FavoriteButton } from './FavoriteButton'
 import toast from 'react-hot-toast'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
@@ -241,28 +242,16 @@ export function ItemDetailModal({ itemId, isOpen, onClose, isAuthenticated, onFa
 
                   {/* Action Button */}
                   <div className="mt-6 pt-4 border-t">
-                    {item.sold ? (
-                      <button
-                        disabled
-                        className="w-full py-3 bg-gray-300 text-gray-600 rounded-lg font-bold cursor-not-allowed"
-                      >
-                        Item Sold
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleSave}
-                        className={`w-full py-3 rounded-lg font-bold transition-colors ${
-                          isSaved
-                            ? 'bg-red-50 text-red-600 hover:bg-red-100 border-2 border-red-200'
-                            : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-center gap-2">
-                          <Heart className={`w-5 h-5 ${isSaved ? 'fill-red-500' : ''}`} />
-                          <span>{isSaved ? 'Saved to Favorites' : 'Save to Favorites'}</span>
-                        </div>
-                      </button>
-                    )}
+                    <FavoriteButton
+                      type="item"
+                      id={itemId}
+                      isSaved={isSaved}
+                      onToggle={handleSave}
+                      isAuthenticated={isAuthenticated}
+                      disabled={item.sold}
+                      label={item.sold ? 'Item Sold' : (isSaved ? 'Saved to Favorites' : 'Save to Favorites')}
+                      className="w-full py-3 rounded-lg font-bold"
+                    />
                   </div>
                 </div>
               </div>
