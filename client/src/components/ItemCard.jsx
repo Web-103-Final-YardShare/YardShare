@@ -1,5 +1,5 @@
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
-import { FavoriteButton } from './FavoriteButton'
+import { FavoriteButton } from './shared/FavoriteButton'
 
 export function ItemCard({ item, isSaved, onSave, onItemClick }) {
 

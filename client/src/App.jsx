@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { HomePage } from './components/HomePage';
-import { AuthPage } from './components/AuthPage';
-import { SavedPage } from './components/SavedPage';
-import { CreateSalePage } from './components/CreateSalePage';
-import { ProfilePage } from './components/ProfilePage';
-import { MySalesPage } from './components/MySalesPage';
-import { ListingDetailPage } from './components/ListingDetailPage';
+import { HomePage } from './pages/HomePage';
+import { AuthPage } from './pages/AuthPage';
+import { SavedPage } from './pages/SavedPage';
+import { CreateSalePage } from './pages/CreateSalePage';
+import { ProfilePage } from './pages/ProfilePage';
+import { MySalesPage } from './pages/MySalesPage';
+import { ListingDetailPage } from './pages/ListingDetailPage';
 
 const API_URL = import.meta?.env?.VITE_API_URL || 'http://localhost:3001';
 

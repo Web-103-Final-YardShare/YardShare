@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Layout } from './Layout'
-import { LoadingSpinner } from './LoadingSpinner'
-import { LocationPicker } from './LocationPicker'
+import { Layout } from '../components/shared/Layout'
+import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { LocationPicker } from '../components/LocationPicker'
 import { getPrimaryPhotoUrl, getAllPhotoUrls } from '../utils/photoHelpers'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'

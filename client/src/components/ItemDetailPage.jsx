@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { MapPin, X, ExternalLink } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { LoadingSpinner } from './LoadingSpinner'
+import { LoadingSpinner } from './shared/LoadingSpinner'
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
-import { FavoriteButton } from './FavoriteButton'
+import { FavoriteButton } from './shared/FavoriteButton'
 import toast from 'react-hot-toast'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Heart, Filter, DollarSign } from 'lucide-react';
-import { LoadingSpinner } from './LoadingSpinner';
+import { LoadingSpinner } from './shared/LoadingSpinner';
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';

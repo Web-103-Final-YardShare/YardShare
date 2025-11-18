@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Header } from './Header';
-import { SalesList } from './SalesList';
-import { MapView } from './MapView';
-import { FilterDialog } from './FilterDialog';
+import { Header } from '../components/shared/Header';
+import { SalesList } from '../components/SalesList';
+import { MapView } from '../components/MapView';
+import { FilterDialog } from '../components/FilterDialog';
 
 export function HomePage({
   isAuthenticated,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Layout } from './Layout'
-import { LoadingSpinner } from './LoadingSpinner'
+import { Layout } from '../components/shared/Layout'
+import { LoadingSpinner } from '../components/shared/LoadingSpinner'
 import { User, Phone, Mail, MessageSquare } from 'lucide-react'
 import toast from 'react-hot-toast'
 
