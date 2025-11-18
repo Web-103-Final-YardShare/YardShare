@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Layout } from './Layout'
-import { LoadingSpinner } from './LoadingSpinner'
-import { MapView } from './MapView'
-import { ItemCard } from './ItemCard'
-import { ItemDetailModal } from './ItemDetailPage'
+import { Layout } from '../components/shared/Layout'
+import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { MapView } from '../components/MapView'
+import { ItemCard } from '../components/ItemCard'
+import { ItemDetailModal } from '../components/ItemDetailPage'
 import { Heart, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
@@ -500,11 +500,29 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
 }
 
 // Page wrapper component
-export function ListingDetailPage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function ListingDetailPage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const { id } = useParams()
-  
+
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       <ListingDetailContent listingId={id} isAuthenticated={isAuthenticated} user={user} />
     </Layout>
   )

@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Layout } from './Layout'
-import { LoadingSpinner } from './LoadingSpinner'
-import { LocationPicker } from './LocationPicker'
+import { Layout } from '../components/shared/Layout'
+import { LoadingSpinner } from '../components/shared/LoadingSpinner'
+import { LocationPicker } from '../components/LocationPicker'
 import { getPrimaryPhotoUrl, getAllPhotoUrls } from '../utils/photoHelpers'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function MySalesPage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const [listings, setListings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -214,7 +223,16 @@ export function MySalesPage({ isAuthenticated, user, favoritesCount, onLogout })
   )
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       {content}
       {showEdit && editForm && (
         <EditModal 

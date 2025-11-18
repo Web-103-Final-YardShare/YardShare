@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Layout } from './Layout'
-import { LocationPicker } from './LocationPicker'
+import { Layout } from '../components/shared/Layout'
+import { LocationPicker } from '../components/LocationPicker'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
-export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout }) {
+export function CreateSalePage({
+  isAuthenticated,
+  user,
+  favoritesCount,
+  onLogout,
+  searchQuery,
+  setSearchQuery,
+  location,
+  setLocation
+}) {
   const navigate = useNavigate();
   const [categories, setCategories] = useState([])
   const [submitting, setSubmitting] = useState(false)
@@ -434,7 +443,16 @@ export function CreateSalePage({ isAuthenticated, user, favoritesCount, onLogout
   )
 
   return (
-    <Layout isAuthenticated={isAuthenticated} user={user} favoritesCount={favoritesCount} onLogout={onLogout}>
+    <Layout
+      isAuthenticated={isAuthenticated}
+      user={user}
+      favoritesCount={favoritesCount}
+      onLogout={onLogout}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      location={location}
+      setLocation={setLocation}
+    >
       {content}
     </Layout>
   )

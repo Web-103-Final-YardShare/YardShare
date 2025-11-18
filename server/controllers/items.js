@@ -28,7 +28,7 @@ const uploadBufferToCloudinary = (buffer, options = {}) => {
 const getItem = async (req, res) => {
   try {
     const { itemId } = req.params
-    
+
     const result = await pool.query(`
       SELECT
         items.*,
@@ -39,17 +39,26 @@ const getItem = async (req, res) => {
         listings.longitude,
         listings.sale_date,
         listings.start_time,
-        listings.end_time
+        listings.end_time,
+        COALESCE(
+          json_agg(
+            json_build_object('id', ip.id, 'url', ip.url, 'is_primary', ip.is_primary, 'position', ip.position)
+            ORDER BY ip.position
+          ) FILTER (WHERE ip.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM items
       JOIN listings ON items.listing_id = listings.id
       LEFT JOIN categories c ON items.category_id = c.id
+      LEFT JOIN item_photos ip ON items.id = ip.item_id
       WHERE items.id = $1
+      GROUP BY items.id, c.name, listings.title, listings.location, listings.latitude, listings.longitude, listings.sale_date, listings.start_time, listings.end_time
     `, [itemId])
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Item not found' })
     }
-    
+
     res.json(result.rows[0])
   } catch (error) {
     console.error('Error fetching item:', error)
@@ -61,7 +70,7 @@ const getItem = async (req, res) => {
 const getAllItems = async (req, res) => {
   try {
     const { category, search } = req.query
-    
+
     let query = `
       SELECT
         items.*,
@@ -69,10 +78,18 @@ const getAllItems = async (req, res) => {
         listings.title as sale_title,
         listings.location as sale_location,
         listings.latitude,
-        listings.longitude
+        listings.longitude,
+        COALESCE(
+          json_agg(
+            json_build_object('id', ip.id, 'url', ip.url, 'is_primary', ip.is_primary, 'position', ip.position)
+            ORDER BY ip.position
+          ) FILTER (WHERE ip.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM items
       JOIN listings ON items.listing_id = listings.id
       LEFT JOIN categories c ON items.category_id = c.id
+      LEFT JOIN item_photos ip ON items.id = ip.item_id
       WHERE items.sold = false AND listings.is_active = true
     `
 
@@ -83,15 +100,16 @@ const getAllItems = async (req, res) => {
       params.push(category)
       query += ` AND c.name = $${params.length}`
     }
-    
+
     // Search by title/description
     if (search) {
       params.push(`%${search}%`)
       query += ` AND (items.title ILIKE $${params.length} OR items.description ILIKE $${params.length})`
     }
-    
+
+    query += ` GROUP BY items.id, c.name, listings.title, listings.location, listings.latitude, listings.longitude`
     query += ` ORDER BY items.created_at DESC`
-    
+
     const result = await pool.query(query, params)
     res.json(result.rows)
   } catch (error) {
@@ -104,17 +122,26 @@ const getAllItems = async (req, res) => {
 const getItemsByListing = async (req, res) => {
   try {
     const { listingId } = req.params
-    
+
     const result = await pool.query(`
       SELECT
         items.*,
-        c.name as category_name
+        c.name as category_name,
+        COALESCE(
+          json_agg(
+            json_build_object('id', ip.id, 'url', ip.url, 'is_primary', ip.is_primary, 'position', ip.position)
+            ORDER BY ip.position
+          ) FILTER (WHERE ip.id IS NOT NULL),
+          '[]'::json
+        ) as photos
       FROM items
       LEFT JOIN categories c ON items.category_id = c.id
+      LEFT JOIN item_photos ip ON items.id = ip.item_id
       WHERE items.listing_id = $1
+      GROUP BY items.id, c.name
       ORDER BY items.display_order, items.created_at
     `, [listingId])
-    
+
     res.json(result.rows)
   } catch (error) {
     console.error('Error fetching items for listing:', error)
