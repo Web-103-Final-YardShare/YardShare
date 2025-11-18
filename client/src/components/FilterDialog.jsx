@@ -1,4 +1,28 @@
+import { useState, useEffect } from 'react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 export function FilterDialog({ open, onClose, filters, setFilters }) {
+  const [categories, setCategories] = useState([]);
+
+  // Fetch categories from API
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/categories`);
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data.map(c => c.name));
+        }
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+        // Fallback to empty array on error
+        setCategories([]);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   if (!open) return null;
 
   const handleStatusChange = (status) => {
@@ -15,8 +39,6 @@ export function FilterDialog({ open, onClose, filters, setFilters }) {
       : [...filters.categories, category];
     setFilters({ ...filters, categories: newCategories });
   };
-
-  const categories = ['Furniture', 'Electronics', 'Clothing', 'Books', 'Toys', 'Tools', 'Kitchen', 'Decor'];
 
   return (
     <>

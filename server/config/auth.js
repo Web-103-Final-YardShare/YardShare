@@ -29,6 +29,14 @@ const verify = async (accessToken, refreshToken, profile, callback) => {
       [id, login, avatar_url, accessToken]
     )
     const newUser = insertRes.rows[0]
+
+    // Create user profile with default values
+    await pool.query(
+      `INSERT INTO user_profiles (user_id, bio, phone, preferred_contact)
+       VALUES ($1, $2, $3, $4)`,
+      [newUser.id, null, null, 'messages']
+    )
+
     return callback(null, newUser)
   } catch (error) {
     return callback(error)
