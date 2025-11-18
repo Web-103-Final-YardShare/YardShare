@@ -1,4 +1,4 @@
-# Milestone 4
+# Milestone 4 - 100% Complete
 
 This document should be completed and submitted during **Unit 8** of this course. You **must** check off all completed tasks in this document in order to receive credit for your work.
 

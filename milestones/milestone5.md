@@ -1,4 +1,4 @@
-# Milestone 5
+# Milestone 5 - 100% Complete
 
 This document should be completed and submitted during **Unit 9** of this course. You **must** check off all completed tasks in this document in order to receive credit for your work.
 
@@ -24,26 +24,26 @@ Complete the checklist below detailing each baseline, custom, and stretch featur
 
 👉🏾👉🏾👉🏾 Check off each completed feature below.
 
-- [ ] The project includes an Express backend app and a React frontend app
-- [ ] The project includes these backend-specific features:
-  - [ ] At least one of each of the following database relationships in Postgres
-    - [ ] one-to-many
-    - [ ] many-to-many with a join table
-  - [ ] A well-designed RESTful API that:
-    - [ ] supports all four main request types for a single entity (ex. tasks in a to-do list app): GET, POST, PATCH, and DELETE
-      - [ ] the user can **view** items, such as tasks
-      - [ ] the user can **create** a new item, such as a task
-      - [ ] the user can **update** an existing item by changing some or all of its values, such as changing the title of task
-      - [ ] the user can **delete** an existing item, such as a task
-    - [ ] Routes follow proper naming conventions
-  - [ ] The web app includes the ability to reset the database to its default state
+- [X] The project includes an Express backend app and a React frontend app
+- [X] The project includes these backend-specific features:
+  - [X] At least one of each of the following database relationships in Postgres
+    -[X] one-to-many
+    - [X] many-to-many with a join table
+  - [X] A well-designed RESTful API that:
+    - [X] supports all four main request types for a single entity (ex. tasks in a to-do list app): GET, POST, PATCH, and DELETE
+      - [X] the user can **view** items, such as tasks
+      - [X] the user can **create** a new item, such as a task
+      - [X] the user can **update** an existing item by changing some or all of its values, such as changing the title of task
+      - [X] the user can **delete** an existing item, such as a task
+    - [X] Routes follow proper naming conventions
+  - [X] The web app includes the ability to reset the database to its default state
 - [ ] The project includes these frontend-specific features:
-  - [ ] At least one redirection, where users are able to navigate to a new page with a new URL within the app
-  - [ ] At least one interaction that the user can initiate and complete on the same page without navigating to a new page
-  - [ ] Dynamic frontend routes created with React Router
-  - [ ] Hierarchically designed React components
-    - [ ] Components broken down into categories, including Page and Component types
-    - [ ] Corresponding container components and presenter components as appropriate
+  - [X] At least one redirection, where users are able to navigate to a new page with a new URL within the app
+  - [X] At least one interaction that the user can initiate and complete on the same page without navigating to a new page
+  - [X] Dynamic frontend routes created with React Router
+  - [X] Hierarchically designed React components
+    - [X] Components broken down into categories, including Page and Component types
+    - [X] Corresponding container components and presenter components as appropriate
 - [ ] The project includes dynamic routes for both frontend and backend apps
 - [ ] The project is deployed on Render with all pages and features that are visible to the user are working as intended
 
@@ -51,9 +51,9 @@ Complete the checklist below detailing each baseline, custom, and stretch featur
 
 👉🏾👉🏾👉🏾 Check off each completed feature below.
 
-- [ ] The project gracefully handles errors
-- [ ] The project includes a one-to-one database relationship
-- [ ] The project includes a slide-out pane or modal as appropriate for your use case that pops up and covers the page content without navigating away from the current page
+- [X] The project gracefully handles errors
+- [X] The project includes a one-to-one database relationship
+- [X] The project includes a slide-out pane or modal as appropriate for your use case that pops up and covers the page content without navigating away from the current page
 - [ ] The project includes a unique field within the join table
 - [ ] The project includes a custom non-RESTful route with corresponding controller actions
 - [ ] The user can filter or sort items based on particular criteria as appropriate for your use case
@@ -65,10 +65,10 @@ Complete the checklist below detailing each baseline, custom, and stretch featur
 
 👉🏾👉🏾👉🏾 Check off each completed feature below.
 
-- [ ] A subset of pages require the user to log in before accessing the content
-  - [ ] Users can log in and log out via GitHub OAuth with Passport.js
+- [X] A subset of pages require the user to log in before accessing the content
+  - [X] Users can log in and log out via GitHub OAuth with Passport.js
 - [ ] Restrict available user options dynamically, such as restricting available purchases based on a user's currency
-- [ ] Show a spinner while a page or page element is loading
+- [X] Show a spinner while a page or page element is loading
 - [ ] Disable buttons and inputs during the form submission process
 - [ ] Disable buttons after they have been clicked
   - *At least 75% of buttons in your app must exhibit this behavior to receive full credit*

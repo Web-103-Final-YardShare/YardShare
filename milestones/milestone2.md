@@ -1,4 +1,4 @@
-# Milestone 2
+# Milestone 2 - 100% Completion
 
 This document should be completed and submitted during **Unit 6** of this course. You **must** check off all completed tasks in this document in order to receive credit for your work.
 

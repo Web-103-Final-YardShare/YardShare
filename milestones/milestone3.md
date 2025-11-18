@@ -1,4 +1,4 @@
-# Milestone 3
+# Milestone 3 - 100% Complete
 
 This document should be completed and submitted during **Unit 7** of this course. You **must** check off all completed tasks in this document in order to receive credit for your work.
 
