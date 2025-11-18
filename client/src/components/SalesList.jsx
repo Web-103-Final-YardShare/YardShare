@@ -75,12 +75,12 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
   const calculateStatus = (listing) => {
     try {
       if (!listing.sale_date) return 'upcoming';
-      
+
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const [year, month, day] = listing.sale_date.split('T')[0].split('-').map(Number);
       const saleDate = new Date(year, month - 1, day);
-      
+
       if (saleDate.getTime() === today.getTime()) {
         if (listing.start_time && listing.end_time) {
           const [startHour, startMin] = listing.start_time.split(':').map(Number);
@@ -90,7 +90,7 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
           const currentTime = currentHour * 60 + currentMin;
           const startTime = startHour * 60 + startMin;
           const endTime = endHour * 60 + endMin;
-          
+
           if (currentTime >= startTime && currentTime <= endTime) return 'now';
           if (currentTime > endTime) return 'ended';
         }
@@ -98,7 +98,7 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
       }
       if (saleDate < today) return 'ended';
       return 'upcoming';
-    } catch (e) { 
+    } catch (e) {
       return 'upcoming';
     }
   };
@@ -108,7 +108,7 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
       <div className="p-4 border-b border-gray-200 sticky top-0 bg-white z-10">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-gray-900">Sales Near You</h2>
-          <button 
+          <button
             onClick={onFilterClick}
             className="flex items-center gap-2 text-emerald-600 hover:text-emerald-700"
           >
@@ -131,7 +131,7 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
           </div>
         )}
         {!loading && items.map(l => (
-          <SaleCard 
+          <SaleCard
             key={l.id}
             listing={l}
             isFavorite={favorites.includes(l.id)}
@@ -147,6 +147,17 @@ export function SalesList({ searchQuery, onFilterClick, favorites, toggleFavorit
 
 function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user }) {
   const navigate = useNavigate();
+  const [checking, setChecking] = useState(false);
+  const [localCheckInCount, setLocalCheckInCount] = useState(parseInt(listing.check_in_count) || 0);
+  const [isCheckedIn, setIsCheckedIn] = useState(false);
+  const [localCheckedInUsers, setLocalCheckedInUsers] = useState(listing.checked_in_users || []);
+
+  // Initialize check-in state based on current user
+  useEffect(() => {
+    if (user && listing.checked_in_users) {
+      setIsCheckedIn(listing.checked_in_users.some(u => u.username === user.username));
+    }
+  }, [user, listing.checked_in_users]);
 
   // Force re-render every minute to update status badge in real-time
   const [tick, setTick] = useState(0);
@@ -158,11 +169,13 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
   }, []);
 
   const photoUrl = useMemo(() => {
-    // Use helper to handle both legacy and new photo formats
-    const fallback = listing.image_url && listing.image_url.startsWith('/')
-      ? `${API_BASE}${listing.image_url}`
-      : (listing.image_url || 'https://placehold.co/600x400?text=No+Image');
-    return getPrimaryPhotoUrl(listing.photos, fallback);
+    const photos = listing.photos || [];
+    // photos is now an array of URL strings, not objects
+    if (Array.isArray(photos) && photos.length > 0) {
+      return photos[0];
+    }
+    if (listing.image_url && listing.image_url.startsWith('/')) return `${API_BASE}${listing.image_url}`;
+    return listing.image_url || 'https://placehold.co/600x400?text=No+Image';
   }, [listing.photos, listing.image_url]);
 
   const distanceMi = useMemo(() => {
@@ -172,27 +185,27 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
   const status = useMemo(() => {
     try {
       if (!listing.sale_date) return 'upcoming';
-      
+
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
+
       // Parse the sale_date string (YYYY-MM-DD format from database)
       const [year, month, day] = listing.sale_date.split('T')[0].split('-').map(Number);
       const saleDate = new Date(year, month - 1, day);
-      
+
       // Check if it's today
       if (saleDate.getTime() === today.getTime()) {
         // Parse start and end times
         if (listing.start_time && listing.end_time) {
           const [startHour, startMin] = listing.start_time.split(':').map(Number);
           const [endHour, endMin] = listing.end_time.split(':').map(Number);
-          
+
           const currentHour = now.getHours();
           const currentMin = now.getMinutes();
           const currentTime = currentHour * 60 + currentMin;
           const startTime = startHour * 60 + startMin;
           const endTime = endHour * 60 + endMin;
-          
+
           if (currentTime >= startTime && currentTime <= endTime) {
             return 'now';
           } else if (currentTime > endTime) {
@@ -203,9 +216,9 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
       } else if (saleDate < today) {
         return 'ended';
       }
-      
+
       return 'upcoming';
-    } catch (e) { 
+    } catch (e) {
       return 'upcoming';
     }
   }, [listing.sale_date, listing.start_time, listing.end_time, tick]);
@@ -227,21 +240,23 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
     return categories.slice(0, 3).map(cat => map[cat] || '📦');
   }, [listing.item_categories]);
 
+  const checkedInUsers = useMemo(() => localCheckedInUsers, [localCheckedInUsers]);
+
   const formatTimeRange = (dateStr, start, end) => {
     if (!dateStr) return '';
     try {
       // Parse the sale_date string (YYYY-MM-DD format from database)
       const [year, month, day] = dateStr.split('T')[0].split('-').map(Number);
       const saleDate = new Date(year, month - 1, day);
-      
+
       if (isNaN(saleDate.getTime())) return '';
-      
+
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const sameDay = saleDate.getTime() === today.getTime();
-      
+
       const dayLabel = sameDay ? 'Today' : saleDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-      
+
       const formatHour = (t) => {
         if (!t) return '';
         const [hh, mm] = t.split(':');
@@ -251,12 +266,60 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
         if (hour > 12) hour = hour - 12;
         return `${hour}${am ? 'am' : 'pm'}`;
       };
-      
+
       const startFmt = start ? formatHour(start) : '';
       const endFmt = end ? formatHour(end) : '';
       return `${dayLabel} ${startFmt}${endFmt ? ' - ' + endFmt : ''}`;
     } catch (e) {
       return '';
+    }
+  };
+
+  const handleCheckIn = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      alert('Please login to check in');
+      return;
+    }
+    setChecking(true);
+    try {
+      if (isCheckedIn) {
+        // Check out
+        const res = await fetch(`${API_BASE}/api/listings/${listing.id}/checkin`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        if (res.ok) {
+          setIsCheckedIn(false);
+          setLocalCheckInCount(prev => Math.max(0, prev - 1));
+          // Remove current user from the list
+          if (user) {
+            setLocalCheckedInUsers(prev => prev.filter(u => u.username !== user.username));
+          }
+        }
+      } else {
+        // Check in
+        const res = await fetch(`${API_BASE}/api/listings/${listing.id}/checkin`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        if (res.ok) {
+          setIsCheckedIn(true);
+          setLocalCheckInCount(prev => prev + 1);
+          // Add current user to the list
+          if (user) {
+            setLocalCheckedInUsers(prev => [
+              { id: Date.now(), username: user.username, avatarurl: user.avatar_url },
+              ...prev
+            ]);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Check-in failed:', e);
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -271,15 +334,15 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
   };
 
   return (
-    <div 
+    <div
       onClick={() => navigate(`/listings/${listing.id}`)}
       className="block border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transform hover:-translate-y-1 transition-all bg-white cursor-pointer no-underline"
     >
       {/* Photo */}
       <div className="relative h-48 bg-gray-100">
-        <img 
-          src={photoUrl} 
-          alt={listing.title || 'Yard sale'} 
+        <img
+          src={photoUrl}
+          alt={listing.title || 'Yard sale'}
           className="w-full h-full object-cover"
           onError={(e) => {
             e.target.src = 'https://placehold.co/600x400?text=No+Image';
@@ -287,8 +350,8 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
         />
         {/* Status Badge - positioned over photo */}
         <span className={`absolute top-2 left-2 text-xs font-bold px-2.5 py-1 rounded ${
-          status === 'now' 
-            ? 'bg-emerald-500 text-white' 
+          status === 'now'
+            ? 'bg-emerald-500 text-white'
             : status === 'ended'
               ? 'bg-red-500 text-white'
               : status === 'today'
@@ -339,6 +402,63 @@ function SaleCard({ listing, isFavorite, onToggleFavorite, isAuthenticated, user
             {listing.item_categories.join(', ')}
           </p>
         )}
+
+        {/* Who's Going Section */}
+        <div className="pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {/* Avatars */}
+              <div className="flex -space-x-2">
+                {checkedInUsers.slice(0, 3).map(user => (
+                  <img
+                    key={user.id}
+                    src={user.avatarurl && user.avatarurl.startsWith('/')
+                      ? `${API_BASE}${user.avatarurl}`
+                      : (user.avatarurl || 'https://i.pravatar.cc/40')}
+                    alt={user.username}
+                    className="w-8 h-8 rounded-full border-2 border-white object-cover"
+                  />
+                ))}
+                {localCheckInCount > 3 && (
+                  <div className="w-8 h-8 rounded-full bg-gray-200 text-xs flex items-center justify-center border-2 border-white font-medium text-gray-700">
+                    +{localCheckInCount - 3}
+                  </div>
+                )}
+              </div>
+
+              {/* Names */}
+              <div className="text-xs">
+                {localCheckInCount === 0 ? (
+                  <span className="text-gray-500">Who's going?</span>
+                ) : localCheckInCount === 1 ? (
+                  <span className="text-gray-700">
+                    {checkedInUsers[0]?.username || '1 person'}
+                  </span>
+                ) : (
+                  <span className="text-gray-700">
+                    {checkedInUsers[0]?.username || 'Someone'}
+                    {` + ${localCheckInCount - 1}`}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Check In Button */}
+            <button
+              onClick={handleCheckIn}
+              disabled={checking}
+              className={`px-4 py-1.5 rounded text-xs font-semibold transition-colors ${
+                checking
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : isCheckedIn
+                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {checking ? 'Loading...' : isCheckedIn ? 'Checked in' : 'Check in!'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
