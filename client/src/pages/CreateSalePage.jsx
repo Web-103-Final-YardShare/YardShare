@@ -56,8 +56,8 @@ export function CreateSalePage({
   }, [])
 
   const onSubmit = async (e) => {
-    e.preventDefault()
-    console.log('[CreateSale] Form submitted')
+    e.preventDefault();
+    console.log('[CreateSale] Form submitted');
 
     // Client-side validation for items
     const errs = []
@@ -102,49 +102,49 @@ export function CreateSalePage({
       const hasListingPhotos = files && files.length > 0
       const hasItemPhotos = (form.items || []).some(it => it.photo)
 
-      console.log('[CreateSale] Debug - hasListingPhotos:', hasListingPhotos, 'hasItemPhotos:', hasItemPhotos)
-      console.log('[CreateSale] Debug - files:', files)
-      console.log('[CreateSale] Debug - form.items:', form.items)
+      console.log('[CreateSale] Debug - hasListingPhotos:', hasListingPhotos, 'hasItemPhotos:', hasItemPhotos);
+      console.log('[CreateSale] Debug - files:', files);
+      console.log('[CreateSale] Debug - form.items:', form.items);
 
       if (hasListingPhotos || hasItemPhotos) {
-        console.log('[CreateSale] Using FormData path')
+        console.log('[CreateSale] Using FormData path');
 
         // Check FormData availability
         if (typeof FormData === 'undefined') {
-          console.error('[CreateSale] FormData is not available')
-          throw new Error('FormData is not supported in this browser')
+          console.error('[CreateSale] FormData is not available');
+          throw new Error('FormData is not supported in this browser');
         }
 
-        console.log('[CreateSale] FormData constructor available:', typeof FormData)
+        console.log('[CreateSale] FormData constructor available:', typeof FormData);
 
         // Create FormData with explicit error handling
-        let fd
+        let fd;
         try {
-          fd = new FormData()
-          console.log('[CreateSale] FormData created successfully:', fd)
-          console.log('[CreateSale] fd.append type:', typeof fd.append)
+          fd = new FormData();
+          console.log('[CreateSale] FormData created successfully:', fd);
+          console.log('[CreateSale] fd.append type:', typeof fd.append);
         } catch (fdError) {
-          console.error('[CreateSale] Failed to create FormData:', fdError)
-          throw new Error(`Failed to create FormData: ${fdError.message}`)
+          console.error('[CreateSale] Failed to create FormData:', fdError);
+          throw new Error(`Failed to create FormData: ${fdError.message}`);
         }
 
         // Verify fd is actually a FormData instance
         if (!fd || typeof fd.append !== 'function') {
-          console.error('[CreateSale] fd is not a valid FormData object:', fd)
-          throw new Error('FormData object creation failed - append method not available')
+          console.error('[CreateSale] fd is not a valid FormData object:', fd);
+          throw new Error('FormData object creation failed - append method not available');
         }
 
-        console.log('[CreateSale] Appending title:', form.title)
-        fd.append('title', form.title)
-        fd.append('description', form.description)
-        if (form.sale_date) fd.append('sale_date', form.sale_date)
-        if (form.start_time) fd.append('start_time', form.start_time)
-        if (form.end_time) fd.append('end_time', form.end_time)
-        fd.append('pickup_notes', form.pickup_notes)
-        fd.append('location', form.location)
-        if (form.latitude != null) fd.append('latitude', String(form.latitude))
-        if (form.longitude != null) fd.append('longitude', String(form.longitude))
-        fd.append('primaryIndex', String(form.primaryIndex || 0))
+        console.log('[CreateSale] Appending title:', form.title);
+        fd.append('title', form.title);
+        fd.append('description', form.description);
+        if (form.sale_date) { fd.append('sale_date', form.sale_date); }
+        if (form.start_time) { fd.append('start_time', form.start_time); }
+        if (form.end_time) { fd.append('end_time', form.end_time); }
+        fd.append('pickup_notes', form.pickup_notes);
+        fd.append('location', form.location);
+        if (form.latitude != null) { fd.append('latitude', String(form.latitude)); }
+        if (form.longitude != null) { fd.append('longitude', String(form.longitude)); }
+        fd.append('primaryIndex', String(form.primaryIndex || 0));
         
         // Include items as JSON string (without photo data)
         const itemsForSend = (form.items || []).map((it, idx) => ({
@@ -155,31 +155,33 @@ export function CreateSalePage({
           condition: it.condition || 'good',
           hasPhoto: !!it.photo // flag to indicate photo will be uploaded
         }))
-        fd.append('items', JSON.stringify(itemsForSend))
-        
+        fd.append('items', JSON.stringify(itemsForSend));
+
         // Append listing photos
-        for (const f of files) fd.append('photos', f)
+        for (const f of files) {
+          fd.append('photos', f);
+        }
         
         // Append item photos with indexed field names
         (form.items || []).forEach((it, idx) => {
           if (it.photo) {
-            console.log(`[CreateSale] Appending item photo ${idx}:`, it.photo.name)
-            fd.append(`item_photo_${idx}`, it.photo)
+            console.log(`[CreateSale] Appending item photo ${idx}:`, it.photo.name);
+            fd.append(`item_photo_${idx}`, it.photo);
           }
-        })
+        });
 
-        console.log('[CreateSale] FormData fully populated, sending request...')
-        console.log('[CreateSale] FormData entries count:', Array.from(fd.entries()).length)
+        console.log('[CreateSale] FormData fully populated, sending request...');
+        console.log('[CreateSale] FormData entries count:', Array.from(fd.entries()).length);
 
         res = await fetch(`${API_BASE}/api/listings`, {
           method: 'POST',
           credentials: 'include',
           body: fd,
-        })
+        });
 
-        console.log('[CreateSale] Request sent, response status:', res.status)
+        console.log('[CreateSale] Request sent, response status:', res.status);
       } else {
-        console.log('[CreateSale] Using JSON path (no photos)')
+        console.log('[CreateSale] Using JSON path (no photos)');
 
         const payload = {
           title: form.title,
@@ -203,36 +205,36 @@ export function CreateSalePage({
           }))
         }
 
-        console.log('[CreateSale] Payload:', payload)
+        console.log('[CreateSale] Payload:', payload);
 
         res = await fetch(`${API_BASE}/api/listings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(payload),
-        })
+        });
 
-        console.log('[CreateSale] JSON request sent, response status:', res.status)
+        console.log('[CreateSale] JSON request sent, response status:', res.status);
       }
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Failed to create')
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to create');
 
-      console.log('[CreateSale] Listing created successfully:', data)
-      setSuccess('Listing created!')
-      toast.success('Listing created successfully!')
+      console.log('[CreateSale] Listing created successfully:', data);
+      setSuccess('Listing created!');
+      toast.success('Listing created successfully!');
       // Redirect to home after short delay
-      setTimeout(() => navigate('/'), 500)
+      setTimeout(() => navigate('/'), 500);
     } catch (e) {
-      console.error('[CreateSale] Error occurred:', e)
-      console.error('[CreateSale] Error stack:', e.stack)
-      console.error('[CreateSale] Error name:', e.name)
-      console.error('[CreateSale] Error message:', e.message)
+      console.error('[CreateSale] Error occurred:', e);
+      console.error('[CreateSale] Error stack:', e.stack);
+      console.error('[CreateSale] Error name:', e.name);
+      console.error('[CreateSale] Error message:', e.message);
 
-      const errorMsg = e.message || 'Failed to create listing'
-      setError(errorMsg)
-      toast.error(errorMsg)
+      const errorMsg = e.message || 'Failed to create listing';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
