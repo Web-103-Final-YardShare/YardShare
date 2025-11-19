@@ -152,6 +152,11 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
               placeholder="Search sales, items, or keywords"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && searchQuery.trim()) {
+                  navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                }
+              }}
               className="w-full h-12 pl-12 pr-4 rounded-full text-gray-900 placeholder:text-gray-500 bg-white/90 shadow-sm focus:outline-none focus:ring-4 focus:ring-emerald-300/40"
             />
           </div>

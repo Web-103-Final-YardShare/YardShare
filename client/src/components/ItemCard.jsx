@@ -1,7 +1,43 @@
+import { useState } from 'react'
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
 import { FavoriteButton } from './shared/FavoriteButton'
+import { ItemDetailModal } from './ItemDetailPage'
+import toast from 'react-hot-toast'
+import { Heart } from 'lucide-react'
 
-export function ItemCard({ item, isSaved, onSave, onItemClick }) {
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+export function ItemCard({ item, isAuthenticated, isSaved }) {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [saved, setSaved] = useState(isSaved)
+
+  const handleItemClick = () => {
+    setIsModalOpen(true)
+  }
+
+  const handleSaveItem = async () => {
+    if (!isAuthenticated) {
+      toast.error('Please login to save items')
+      return
+    }
+
+    try {
+      const method = saved ? 'DELETE' : 'POST'
+      const response = await fetch(`${API_BASE}/api/favorites/items/${item.id}`, {
+        method,
+        credentials: 'include',
+      })
+
+      if (response.ok) {
+        setSaved(!saved)
+        toast.success(saved ? 'Item removed from saved' : 'Item saved')
+      } else {
+        throw new Error('Failed to update save status')
+      }
+    } catch (error) {
+      toast.error('Failed to save item')
+    }
+  }
 
   const getCategoryEmoji = (category) => {
     const map = {
@@ -21,7 +57,7 @@ export function ItemCard({ item, isSaved, onSave, onItemClick }) {
 
   return (
     <div 
-      onClick={() => onItemClick?.(item.id)}
+      onClick={handleItemClick}
       className="bg-white border rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
     >
       {/* Item Image */}
@@ -56,16 +92,17 @@ export function ItemCard({ item, isSaved, onSave, onItemClick }) {
           {/** Backend returns category_name via SQL JOIN */}
           {(() => {
             const cat = item.category_name || null
+            const condition = item.condition || 'good'
             return (
               <>
                 <span className={`text-xs font-medium px-2 py-1 rounded inline-flex items-center gap-2 ${
-            item.condition === 'excellent' ? 'bg-green-100 text-green-700 border border-green-300' :
-            item.condition === 'good' ? 'bg-blue-100 text-blue-700 border border-blue-300' :
-            item.condition === 'fair' ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' :
+            condition === 'excellent' ? 'bg-green-100 text-green-700 border border-green-300' :
+            condition === 'good' ? 'bg-blue-100 text-blue-700 border border-blue-300' :
+            condition === 'fair' ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' :
             'bg-gray-100 text-gray-700 border border-gray-300'
           }`}>
                 {cat ? <span className="text-lg leading-none">{getCategoryEmoji(cat)}</span> : null}
-                <span>{item.condition.charAt(0).toUpperCase() + item.condition.slice(1)}</span>
+                <span>{condition.charAt(0).toUpperCase() + condition.slice(1)}</span>
               </span>
               {cat && (
                 <span className="text-xs font-medium px-2 py-1 rounded bg-gray-100 text-gray-700 border border-gray-300">
@@ -80,18 +117,27 @@ export function ItemCard({ item, isSaved, onSave, onItemClick }) {
           <p className="text-sm text-gray-600 line-clamp-3 mb-3">{item.description}</p>
         )}
 
-        <FavoriteButton
-          type="item"
-          id={item.id}
-          isSaved={isSaved}
-          onToggle={onSave}
-          isAuthenticated={true}
-          disabled={item.sold}
-          label={item.sold ? 'Sold' : null}
-          className="w-full py-2.5 rounded-lg font-medium text-sm"
-          size="sm"
-        />
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            handleSaveItem()
+          }}
+          className={`w-full py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 ${saved ? 'bg-red-500 text-white' : 'bg-emerald-500 text-white'}`}
+        >
+          <Heart className="w-5 h-5" />
+          {saved ? 'Unsave' : 'Save'}
+        </button>
       </div>
+
+      {/* Item Detail Modal */}
+      {isModalOpen && (
+        <ItemDetailModal
+          itemId={item.id}
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          isAuthenticated={isAuthenticated}
+        />
+      )}
     </div>
   )
 }

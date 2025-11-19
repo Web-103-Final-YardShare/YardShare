@@ -23,8 +23,6 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
   const [checkInCount, setCheckInCount] = useState(0)
   const [checkedInUsers, setCheckedInUsers] = useState([])
   const [isListingSaved, setIsListingSaved] = useState(false)
-  const [savedItems, setSavedItems] = useState(new Set())
-  const [selectedItemId, setSelectedItemId] = useState(null)
   const [showCheckInModal, setShowCheckInModal] = useState(false)
 
   useEffect(() => {
@@ -51,13 +49,6 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
           if (favRes.ok) {
             const favData = await favRes.json()
             setIsListingSaved(favData.some(f => f.id === parseInt(listingId)))
-          }
-          
-          // Load saved items from API
-          const itemFavRes = await fetch(`${API_BASE}/api/favorites/items`, { credentials: 'include' })
-          if (itemFavRes.ok) {
-            const itemFavData = await itemFavRes.json()
-            setSavedItems(new Set(itemFavData.map(item => item.id)))
           }
         }
 
@@ -163,50 +154,6 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
       }
     } catch (e) {
       toast.error('Failed to update saved status')
-    }
-  }
-
-  const handleSaveItem = async (itemId) => {
-    if (!isAuthenticated) {
-      toast.error('Please login to save items')
-      return
-    }
-    try {
-      if (savedItems.has(itemId)) {
-        // Remove item favorite via API
-        const res = await fetch(`${API_BASE}/api/favorites/items/${itemId}`, {
-          method: 'DELETE',
-          credentials: 'include'
-        })
-        if (res.ok) {
-          setSavedItems(prev => {
-            const next = new Set(prev)
-            next.delete(itemId)
-            return next
-          })
-          toast.success('Item removed from saved')
-        } else {
-          throw new Error('Failed to remove')
-        }
-      } else {
-        // Add item favorite via API
-        const res = await fetch(`${API_BASE}/api/favorites/items/${itemId}`, {
-          method: 'POST',
-          credentials: 'include'
-        })
-        if (res.ok) {
-          setSavedItems(prev => {
-            const next = new Set(prev)
-            next.add(itemId)
-            return next
-          })
-          toast.success('Item saved')
-        } else {
-          throw new Error('Failed to save')
-        }
-      }
-    } catch (e) {
-      toast.error('Failed to save item')
     }
   }
 
@@ -430,12 +377,11 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
                 <h2 className="text-xl font-semibold mb-4">Items for Sale</h2>
                 <div className="grid sm:grid-cols-2 gap-4">
                   {items.map(item => (
-                    <ItemCard 
+                    <ItemCard
                       key={item.id}
                       item={item}
-                      isSaved={savedItems.has(item.id)}
-                      onSave={handleSaveItem}
-                      onItemClick={setSelectedItemId}
+                      isAuthenticated={isAuthenticated}
+                      isSaved={item.is_saved}
                     />
                   ))}
                 </div>
@@ -446,9 +392,9 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
 
         {/* Item Detail Modal */}
         <ItemDetailModal
-          itemId={selectedItemId}
-          isOpen={selectedItemId !== null}
-          onClose={() => setSelectedItemId(null)}
+          itemId={null}
+          isOpen={false}
+          onClose={() => {}}
           isAuthenticated={isAuthenticated}
           onFavoriteChange={() => {
             // Refetch listing to update item favorite states
