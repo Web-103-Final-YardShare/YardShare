@@ -53,7 +53,11 @@ const listConversations = async (req, res) => {
       JOIN listings l ON c.listing_id = l.id
       JOIN users u_b ON c.buyer_id = u_b.id
       JOIN users u_s ON c.seller_id = u_s.id
-      WHERE c.buyer_id = $1 OR c.seller_id = $1
+      WHERE (c.buyer_id = $1 OR c.seller_id = $1)
+        AND (
+          (c.buyer_id = $1 AND c.buyer_deleted = FALSE) OR
+          (c.seller_id = $1 AND c.seller_deleted = FALSE)
+        )
       ORDER BY COALESCE((
         SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id = c.id
       ), c.updated_at) DESC
@@ -92,6 +96,18 @@ const getOrCreateConversation = async (req, res) => {
         `INSERT INTO conversations (listing_id, buyer_id, seller_id) VALUES ($1, $2, $3) RETURNING *`,
         [listing_id, userId, sellerId]
       )
+    } else {
+      // Un-delete for the current user if previously soft-deleted
+      await pool.query(
+        `UPDATE conversations
+         SET buyer_deleted = CASE WHEN buyer_id = $2 THEN FALSE ELSE buyer_deleted END,
+             seller_deleted = CASE WHEN seller_id = $2 THEN FALSE ELSE seller_deleted END,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [conv.rows[0].id, userId]
+      )
+      // Re-fetch to return latest flags
+      conv = await pool.query('SELECT * FROM conversations WHERE id = $1', [conv.rows[0].id])
     }
 
     res.status(201).json(conv.rows[0])
@@ -146,12 +162,53 @@ const sendMessage = async (req, res) => {
       [conversationId, userId, String(body).trim()]
     )
 
-    // bump conversation updated_at
-    await pool.query(`UPDATE conversations SET updated_at = NOW() WHERE id = $1`, [conversationId])
+    await pool.query(
+      `UPDATE conversations
+       SET updated_at = NOW(),
+           buyer_deleted = FALSE,
+           seller_deleted = FALSE
+       WHERE id = $1`,
+      [conversationId]
+    )
 
     res.status(201).json(r.rows[0])
   } catch (error) {
     console.error('Error sendMessage:', error)
+    res.status(error.status || 500).json({ error: error.message })
+  }
+}
+
+// DELETE /api/messages/conversations/:id
+const deleteConversation = async (req, res) => {
+  try {
+    const userId = req.user?.id
+    if (!userId) return res.status(401).json({ error: 'Must be logged in' })
+
+    const conversationId = parseInt(req.params.id)
+    await ensureParticipant(conversationId, userId)
+
+    // Determine if user is buyer or seller
+    const conv = await pool.query(
+      'SELECT buyer_id, seller_id FROM conversations WHERE id = $1',
+      [conversationId]
+    )
+    if (conv.rows.length === 0) {
+      return res.status(404).json({ error: 'Conversation not found' })
+    }
+
+    const { buyer_id, seller_id } = conv.rows[0]
+    const isBuyer = buyer_id === userId
+
+    // Soft delete: set the appropriate flag
+    if (isBuyer) {
+      await pool.query('UPDATE conversations SET buyer_deleted = TRUE WHERE id = $1', [conversationId])
+    } else {
+      await pool.query('UPDATE conversations SET seller_deleted = TRUE WHERE id = $1', [conversationId])
+    }
+
+    res.json({ success: true, message: 'Conversation deleted' })
+  } catch (error) {
+    console.error('Error deleteConversation:', error)
     res.status(error.status || 500).json({ error: error.message })
   }
 }
@@ -161,4 +218,5 @@ module.exports = {
   getOrCreateConversation,
   listMessages,
   sendMessage,
+  deleteConversation,
 }

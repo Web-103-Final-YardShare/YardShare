@@ -4,7 +4,7 @@ import { getMessages, sendMessage } from '../services/messagesApi'
 import { LoadingSpinner } from './shared/LoadingSpinner'
 import toast from 'react-hot-toast'
 
-export function ChatWindow({ conversationId, conversation, currentUserId, onMessagesRead }) {
+export function ChatWindow({ conversationId, conversation, currentUserId, currentUsername, onMessagesRead }) {
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState('')
   const [loading, setLoading] = useState(false)
@@ -86,7 +86,16 @@ export function ChatWindow({ conversationId, conversation, currentUserId, onMess
     )
   }
 
-  const isBuyer = conversation?.buyer_id === currentUserId
+  const hasId = currentUserId !== undefined && currentUserId !== null
+  const isBuyerById = hasId && Number(conversation?.buyer_id) === Number(currentUserId)
+  const isSellerById = hasId && Number(conversation?.seller_id) === Number(currentUserId)
+  let isBuyer = isBuyerById
+  if (!hasId && currentUsername) {
+    if (conversation?.buyer_username === currentUsername) isBuyer = true
+    else if (conversation?.seller_username === currentUsername) isBuyer = false
+  } else if (hasId && !isBuyerById && isSellerById) {
+    isBuyer = false
+  }
   const otherUser = isBuyer
     ? { username: conversation?.seller_username, avatar: conversation?.seller_avatar }
     : { username: conversation?.buyer_username, avatar: conversation?.buyer_avatar }
@@ -128,7 +137,7 @@ export function ChatWindow({ conversationId, conversation, currentUserId, onMess
           </div>
         ) : (
           messages.map((msg) => {
-            const isOwnMessage = msg.sender_id === currentUserId
+            const isOwnMessage = Number(msg.sender_id) === Number(currentUserId)
             return (
               <div
                 key={msg.id}

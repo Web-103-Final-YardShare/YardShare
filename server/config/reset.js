@@ -181,6 +181,8 @@ const createTables = async () => {
         listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
         buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        buyer_deleted BOOLEAN DEFAULT FALSE,
+        seller_deleted BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
         CONSTRAINT conversations_buyer_seller_listing_unique UNIQUE (listing_id, buyer_id, seller_id),
@@ -423,6 +425,74 @@ const seedTestData = async () => {
       `, [bryanId, 'Always looking for great deals!', null, 'messages'])
     }
 
+    // Create a listing for bryan
+    const bryanListing = await pool.query(`
+      INSERT INTO listings (seller_id, category_id, title, description, sale_date, start_time, end_time, pickup_notes, location, latitude, longitude, is_active)
+      VALUES ($1, $2, $3, $4, CURRENT_DATE + 2, '08:00', '12:00', $5, $6, $7, $8, true)
+      RETURNING id
+    `, [
+      bryanId,
+      categoryMap['Other'],
+      "Bryan's Neighborhood Garage Sale",
+      'Assorted household items, small electronics, and outdoor gear. Priced to move!',
+      'Cash or Venmo. Porch pickup available.',
+      '321 Pine Lane, Orlando, FL 32804',
+      28.5775,
+      -81.3931
+    ])
+    const bryanListingId = bryanListing.rows[0].id
+
+    // Add a primary photo for Bryan's listing
+    await pool.query(`
+      INSERT INTO listing_photos (listing_id, url, is_primary, position)
+      VALUES ($1, $2, true, 0)
+    `, [bryanListingId, 'https://placehold.co/800x600?text=Bryan+Sale'])
+
+    // Add a couple of items for Bryan's listing
+    const bryanItems = [
+      {
+        title: 'Mountain Bike',
+        description: '26-inch mountain bike, recently tuned up. Rides great.',
+        price: 120.00,
+        condition: 'good',
+        category: 'Outdoor',
+        image_url: 'https://placehold.co/400x400?text=Bike'
+      },
+      {
+        title: 'Microwave Oven',
+        description: '700W compact microwave, clean and fully functional.',
+        price: 35.00,
+        condition: 'good',
+        category: 'Kitchen',
+        image_url: 'https://placehold.co/400x400?text=Microwave'
+      },
+      {
+        title: 'Toolbox with Tools',
+        description: 'Assorted hand tools in a metal toolbox (wrenches, pliers, screwdrivers).',
+        price: 30.00,
+        condition: 'fair',
+        category: 'Tools',
+        image_url: 'https://placehold.co/400x400?text=Tools'
+      }
+    ]
+
+    for (let i = 0; i < bryanItems.length; i++) {
+      const it = bryanItems[i]
+      await pool.query(`
+        INSERT INTO items (listing_id, category_id, title, description, price, condition, image_url, display_order)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        bryanListingId,
+        categoryMap[it.category] || categoryMap['Other'],
+        it.title,
+        it.description,
+        it.price,
+        it.condition,
+        it.image_url,
+        i
+      ])
+    }
+
     const conv = await pool.query(`
       INSERT INTO conversations (listing_id, buyer_id, seller_id)
       VALUES ($1, $2, $3)
@@ -436,7 +506,7 @@ const seedTestData = async () => {
     `, [conv.rows[0].id, bryanId, 'Hi! Is the dresser still available this weekend?'])
     
     console.log('✅ Test data seeded')
-    console.log(`   - Created 2 yard sales`)
+    console.log(`   - Created 3 yard sales (including Bryan's) `)
     console.log(`   - Added ${listing1Items.length} items to listing 1`)
     console.log(`   - Added ${listing2Items.length} items to listing 2`)
     console.log(`   - Seeded 1 sample conversation with 1 message`)

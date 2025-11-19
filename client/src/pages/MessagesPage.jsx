@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { MessageCircle } from 'lucide-react'
-import { getConversations } from '../services/messagesApi'
+import { getConversations, deleteConversation } from '../services/messagesApi'
 import { ConversationsList } from '../components/ConversationsList'
 import { ChatWindow } from '../components/ChatWindow'
 import { LoadingSpinner } from '../components/shared/LoadingSpinner'
@@ -55,6 +55,16 @@ export function MessagesPage({
     loadConversations()
   }, [loadConversations])
 
+  const handleDelete = async (conversationId) => {
+    await deleteConversation(conversationId)
+    // If deleted conversation was selected, clear selection
+    if (selectedConvId === conversationId) {
+      setSelectedConvId(null)
+    }
+    // Reload conversations
+    await loadConversations()
+  }
+
   const selectedConversation = conversations.find(c => c.id === selectedConvId)
 
   return (
@@ -90,6 +100,8 @@ export function MessagesPage({
               selectedId={selectedConvId}
               onSelect={setSelectedConvId}
               currentUserId={user?.id}
+              currentUsername={user?.username}
+              onDelete={handleDelete}
             />
           </div>
 
@@ -99,6 +111,7 @@ export function MessagesPage({
               conversationId={selectedConvId}
               conversation={selectedConversation}
               currentUserId={user?.id}
+              currentUsername={user?.username}
               onMessagesRead={loadConversations}
             />
           </div>

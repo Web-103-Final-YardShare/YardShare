@@ -41,3 +41,13 @@ export async function sendMessage(conversationId, body) {
   if (!res.ok) throw new Error(`Failed to send message: ${res.status}`)
   return res.json()
 }
+
+// Delete a conversation
+export async function deleteConversation(conversationId) {
+  const res = await fetch(`${API_BASE}/api/messages/conversations/${conversationId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`)
+  return res.json()
+}
