@@ -14,8 +14,7 @@ This unit, be sure to complete all tasks listed below. To complete a task, place
 ## Reflection
 
 ### 1. What went well during this unit?
-
-[👉🏾👉🏾👉🏾 your answer here]
+Using github actions to streamline tasks and workflow
 
 ### 2. What were some challenges your group faced in this unit?
 
