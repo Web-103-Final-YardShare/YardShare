@@ -1,15 +1,53 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 {/* DO NOT CHANGE, It might be deprecated but will break the page */}
-import { MapPin, ArrowLeft, Github } from "lucide-react";
+import { MapPin, ArrowLeft, Github, User } from "lucide-react";
 import { Button } from "../components/Button";
+import toast from "react-hot-toast";
 
 const API_URL = import.meta?.env?.VITE_API_URL || "http://localhost:3001";
+const isDev = import.meta.env.DEV;
 
 export function AuthPage() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [devUsername, setDevUsername] = useState("bryan");
+  const [devPassword, setDevPassword] = useState("");
 
   const handleGitHubLogin = () => {
     window.location.href = `${API_URL}/auth/github`;
+  };
+
+
+  const handleDevPasswordLogin = async (e) => {
+    e?.preventDefault?.();
+    if (!devUsername || !devPassword) {
+      toast.error("Enter username and password");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/auth/dev/password-login`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: devUsername, password: devPassword })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `Login failed (${res.status})`);
+      }
+      const data = await res.json();
+      localStorage.setItem("yardshare_token", data.token);
+      toast.success(`Logged in as ${devUsername}!`);
+      navigate("/");
+      window.location.reload();
+    } catch (error) {
+      console.error("Dev password login error:", error);
+      toast.error(error?.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -51,7 +89,39 @@ export function AuthPage() {
             Continue with GitHub
           </Button>
 
-          {/* Dev Mode removed */}
+          {/* Dev Mode Login */}
+          {isDev && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-xs text-gray-500 text-center mb-3">🛠️ Dev Mode Login</p>
+              <form onSubmit={handleDevPasswordLogin} className="space-y-3">
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={devUsername}
+                    onChange={(e) => setDevUsername(e.target.value)}
+                    placeholder="Username (bryan or testuser)"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <input
+                    type="password"
+                    value={devPassword}
+                    onChange={(e) => setDevPassword(e.target.value)}
+                    placeholder="Password from .env"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  variant="secondary"
+                  className="w-full flex items-center justify-center gap-2"
+                >
+                  <User className="size-4" />
+                  Dev Mode Login
+                </Button>
+              </form>
+            </div>
+          )}
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-500">

@@ -72,7 +72,7 @@ export function ItemDetailModal({ itemId, isOpen, onClose, isAuthenticated, onFa
           onFavoriteChange?.()
         }
       }
-    } catch (e) {
+    } catch {
       toast.error('Failed to update saved status')
     }
   }
@@ -204,7 +204,7 @@ export function ItemDetailModal({ itemId, isOpen, onClose, isAuthenticated, onFa
 
                   {/* Description */}
                   {item.description && (
-                    <div className="mb-6 flex-grow">
+                    <div className="mb-6 grow">
                       <h2 className="text-lg font-semibold text-gray-900 mb-2">Description</h2>
                       <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{item.description}</p>
                     </div>
@@ -221,7 +221,7 @@ export function ItemDetailModal({ itemId, isOpen, onClose, isAuthenticated, onFa
                       )}
                       {item.sale_location && (
                         <div className="flex items-start gap-2 text-gray-700 text-sm mb-3">
-                          <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                          <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                           <span>{item.sale_location}</span>
                         </div>
                       )}

@@ -8,6 +8,7 @@ import { ItemDetailModal } from '../components/ItemDetailPage'
 import { Heart, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers'
+import { MessageSellerButton } from '../components/shared/MessageSellerButton'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
@@ -375,9 +376,16 @@ export function ListingDetailContent({ listingId, isAuthenticated, user, asModal
                   alt={listing.seller_username}
                   className="w-10 h-10 rounded-full"
                 />
-                <div>
+                <div className="flex-1">
                   <p className="font-medium">{listing.seller_username}</p>
-                  <button className="text-sm text-emerald-600 hover:underline">Message Seller</button>
+                  {user?.username !== listing.seller_username && (
+                    <MessageSellerButton
+                      listingId={listingId}
+                      isAuthenticated={isAuthenticated}
+                      variant="text"
+                      size="sm"
+                    />
+                  )}
                 </div>
               </div>
             </div>

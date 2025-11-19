@@ -6,6 +6,8 @@ const dropTables = async () => {
     console.log('🗑️  Dropping tables...')
     await pool.query('DROP TABLE IF EXISTS item_favorites CASCADE')
     await pool.query('DROP TABLE IF EXISTS attendees CASCADE')
+    await pool.query('DROP TABLE IF EXISTS messages CASCADE')
+    await pool.query('DROP TABLE IF EXISTS conversations CASCADE')
     await pool.query('DROP TABLE IF EXISTS items CASCADE')
     await pool.query('DROP TABLE IF EXISTS listing_photos CASCADE')
     await pool.query('DROP TABLE IF EXISTS listing_favorites CASCADE')
@@ -170,6 +172,38 @@ const createTables = async () => {
         checked_in_at TIMESTAMP DEFAULT NOW(),
         PRIMARY KEY (user_id, listing_id)
       )
+    `)
+
+    // Conversations table (buyer-seller per listing)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversations (
+        id SERIAL PRIMARY KEY,
+        listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+        buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT conversations_buyer_seller_listing_unique UNIQUE (listing_id, buyer_id, seller_id),
+        CONSTRAINT buyer_not_seller CHECK (buyer_id <> seller_id)
+      )
+    `)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_conversations_participants ON conversations(buyer_id, seller_id)
+    `)
+
+    // Messages table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        read_at TIMESTAMP NULL
+      )
+    `)
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at)
     `)
 
     console.log('✅ Tables created')
@@ -389,17 +423,23 @@ const seedTestData = async () => {
       `, [bryanId, 'Always looking for great deals!', null, 'messages'])
     }
 
-    // Add some favorites
+    const conv = await pool.query(`
+      INSERT INTO conversations (listing_id, buyer_id, seller_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (listing_id, buyer_id, seller_id) DO UPDATE SET updated_at = NOW()
+      RETURNING id
+    `, [listingId1, bryanId, userId])
+
     await pool.query(`
-      INSERT INTO favorites (user_id, listing_id)
-      VALUES ($1, $2)
-      ON CONFLICT DO NOTHING
-    `, [bryanId, listingId1])
+      INSERT INTO messages (conversation_id, sender_id, body)
+      VALUES ($1, $2, $3)
+    `, [conv.rows[0].id, bryanId, 'Hi! Is the dresser still available this weekend?'])
     
     console.log('✅ Test data seeded')
     console.log(`   - Created 2 yard sales`)
     console.log(`   - Added ${listing1Items.length} items to listing 1`)
     console.log(`   - Added ${listing2Items.length} items to listing 2`)
+    console.log(`   - Seeded 1 sample conversation with 1 message`)
   } catch (error) {
     console.error('❌ Error seeding test data:', error.message)
   }
