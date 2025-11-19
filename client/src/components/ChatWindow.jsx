@@ -4,7 +4,7 @@ import { getMessages, sendMessage } from '../services/messagesApi'
 import { LoadingSpinner } from './shared/LoadingSpinner'
 import toast from 'react-hot-toast'
 
-export function ChatWindow({ conversationId, conversation, currentUserId }) {
+export function ChatWindow({ conversationId, conversation, currentUserId, onMessagesRead }) {
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState('')
   const [loading, setLoading] = useState(false)
@@ -28,6 +28,7 @@ export function ChatWindow({ conversationId, conversation, currentUserId }) {
         const data = await getMessages(conversationId)
         setMessages(data)
         setTimeout(scrollToBottom, 100)
+        if (onMessagesRead) onMessagesRead()
       } catch (error) {
         console.error('Failed to load messages:', error)
         toast.error('Failed to load messages')
@@ -37,7 +38,20 @@ export function ChatWindow({ conversationId, conversation, currentUserId }) {
     }
 
     fetchMessages()
-  }, [conversationId, scrollToBottom])
+    
+    // Poll for new messages every 3 seconds when conversation is open
+    const interval = setInterval(async () => {
+      try {
+        const data = await getMessages(conversationId)
+        setMessages(data)
+        if (onMessagesRead) onMessagesRead()
+      } catch (error) {
+        console.error('Failed to poll messages:', error)
+      }
+    }, 3000)
+    
+    return () => clearInterval(interval)
+  }, [conversationId, scrollToBottom, onMessagesRead])
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
@@ -87,9 +101,17 @@ export function ChatWindow({ conversationId, conversation, currentUserId }) {
             alt={otherUser.username}
             className="size-10 rounded-full object-cover"
           />
-          <div>
-            <h3 className="font-semibold text-gray-900">{otherUser.username}</h3>
-            <p className="text-sm text-gray-600">{conversation?.listing_title}</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-gray-900">{otherUser.username}</h3>
+              <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded">
+                {isBuyer ? 'Seller' : 'Buyer'}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600">About: <span className="font-medium">{conversation?.listing_title || 'Listing'}</span></p>
+            {conversation?.listing_location && (
+              <p className="text-xs text-gray-500">📍 {conversation.listing_location}</p>
+            )}
           </div>
         </div>
       </div>

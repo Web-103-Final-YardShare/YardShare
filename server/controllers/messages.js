@@ -43,7 +43,12 @@ const listConversations = async (req, res) => {
           WHERE m3.conversation_id = c.id
             AND m3.sender_id <> $1
             AND m3.read_at IS NULL
-        ) AS unread_count
+        ) AS unread_count,
+        -- Total message count in conversation
+        (
+          SELECT COUNT(*)::int FROM messages m4
+          WHERE m4.conversation_id = c.id
+        ) AS message_count
       FROM conversations c
       JOIN listings l ON c.listing_id = l.id
       JOIN users u_b ON c.buyer_id = u_b.id

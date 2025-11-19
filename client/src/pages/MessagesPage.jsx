@@ -99,6 +99,7 @@ export function MessagesPage({
               conversationId={selectedConvId}
               conversation={selectedConversation}
               currentUserId={user?.id}
+              onMessagesRead={loadConversations}
             />
           </div>
         </div>
