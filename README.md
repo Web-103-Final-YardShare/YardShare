@@ -52,6 +52,8 @@ https://github.com/user-attachments/assets/cf188809-0f35-48b5-a485-20ac4e9f8695
 ### In-app Messaging
 
 Buyers can message sellers through a simple in-app messaging feature to ask questions and coordinate pickup times.
+![messagingdemo1](https://github.com/user-attachments/assets/9e8135f2-d52e-4ab8-ad02-80c71f6b6088)
+
 
 ### Favorites / Saved Listings
 
