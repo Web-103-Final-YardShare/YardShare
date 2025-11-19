@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Heart, Plus, User, LogOut } from 'lucide-react';
+import { MapPin, Search, Heart, Plus, User, LogOut, MessageCircle } from 'lucide-react';
 import { Button } from '../Button';
 
 export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, favoritesCount, onLogout, location, setLocation }) {
@@ -158,6 +158,16 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
         </div>
 
         <div className="flex items-center gap-3">
+          {isAuthenticated && (
+            <button 
+              onClick={() => navigate('/messages')}
+              className="flex items-center gap-2 hover:bg-emerald-700 h-10 px-4 rounded-lg transition-colors"
+            >
+              <MessageCircle className="size-5" />
+              <span className="hidden lg:inline">Messages</span>
+            </button>
+          )}
+
           {/* Saved Button - only show count if authenticated */}
           <button 
             onClick={() => {
