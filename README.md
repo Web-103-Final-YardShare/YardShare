@@ -54,15 +54,14 @@ https://github.com/user-attachments/assets/cf188809-0f35-48b5-a485-20ac4e9f8695
 Buyers can message sellers through a simple in-app messaging feature to ask questions and coordinate pickup times.
 ![messagingdemo1](https://github.com/user-attachments/assets/9e8135f2-d52e-4ab8-ad02-80c71f6b6088)
 
-
 ### Favorites / Saved Listings
 
 Users can bookmark listings to a Favorites list for later review.
 https://github.com/user-attachments/assets/0c733007-7731-4f10-a3c0-84cde1b19bba
+
 ### Photo Uploads
 
 Listings support multiple photos so buyers can see item condition and details.
-
 https://github.com/user-attachments/assets/e8fa69e4-c4af-4673-9ee4-c170cc023ad9
 
 ### Scheduling / Pickup Notes (Custom)
