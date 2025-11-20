@@ -217,6 +217,7 @@ export function SavedPage({
                     <ItemCard 
                       key={item.id}
                       item={item}
+                      isAuthenticated={isAuthenticated}
                       isSaved={true}
                       onSave={handleUnsaveItem}
                       onItemClick={setSelectedItemId}

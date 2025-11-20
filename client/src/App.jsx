@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { HomePage } from './pages/HomePage';
 import { AuthPage } from './pages/AuthPage';
 import { SavedPage } from './pages/SavedPage';
+import { SearchResultsPage } from './pages/SearchResultsPage';
 import { CreateSalePage } from './pages/CreateSalePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { MySalesPage } from './pages/MySalesPage';
@@ -175,6 +176,21 @@ export default function App() {
         <Route 
           path="/auth" 
           element={<AuthPage />} 
+        />
+        <Route
+          path="/search"
+          element={
+            <SearchResultsPage
+              isAuthenticated={isAuthenticated}
+              user={user}
+              favoritesCount={favorites.length + savedItemsCount}
+              onLogout={handleLogout}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              location={location}
+              setLocation={setLocation}
+            />
+          }
         />
         <Route
           path="/saved"
