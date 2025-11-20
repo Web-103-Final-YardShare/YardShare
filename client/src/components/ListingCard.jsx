@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart } from 'lucide-react';
 import { getPrimaryPhotoUrl } from '../utils/photoHelpers';
+import { MessageSellerButton } from './shared/MessageSellerButton';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -20,7 +21,7 @@ export function ListingCard({ listing, isFavorite, onToggleFavorite, isAuthentic
   }, [user, listing.checked_in_users]);
 
   // Force re-render every minute to update status badge in real-time
-  const [tick, setTick] = useState(0);
+  const [tick , setTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => {
       setTick(t => t + 1);
@@ -84,7 +85,7 @@ export function ListingCard({ listing, isFavorite, onToggleFavorite, isAuthentic
       }
 
       return 'upcoming';
-    } catch (e) {
+    } catch {
       return 'upcoming';
     }
   }, [listing.sale_date, listing.start_time, listing.end_time, tick]);
@@ -136,7 +137,7 @@ export function ListingCard({ listing, isFavorite, onToggleFavorite, isAuthentic
       const startFmt = start ? formatHour(start) : '';
       const endFmt = end ? formatHour(end) : '';
       return `${dayLabel} ${startFmt}${endFmt ? ' - ' + endFmt : ''}`;
-    } catch (e) {
+    } catch {
       return '';
     }
   };
@@ -325,6 +326,7 @@ export function ListingCard({ listing, isFavorite, onToggleFavorite, isAuthentic
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );
