@@ -9,6 +9,7 @@ import { CreateSalePage } from './pages/CreateSalePage';
 import { ProfilePage } from './pages/ProfilePage';
 import { MySalesPage } from './pages/MySalesPage';
 import { ListingDetailPage } from './pages/ListingDetailPage';
+import { MessagesPage } from './pages/MessagesPage';
 
 const API_URL = import.meta?.env?.VITE_API_URL || 'http://localhost:3001';
 
@@ -281,6 +282,25 @@ export default function App() {
               location={location}
               setLocation={setLocation}
             />
+          }
+        />
+        <Route
+          path="/messages"
+          element={
+            isAuthenticated ? (
+              <MessagesPage 
+                isAuthenticated={isAuthenticated}
+                user={user}
+                favoritesCount={favorites.length + savedItemsCount}
+                onLogout={handleLogout}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                location={location}
+                setLocation={setLocation}
+              />
+            ) : (
+              <Navigate to="/auth" replace />
+            )
           }
         />
         <Route 

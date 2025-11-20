@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Search, Heart, Plus, User, LogOut } from 'lucide-react';
+import { MapPin, Search, Heart, Plus, User, LogOut, MessageCircle } from 'lucide-react';
 import { Button } from '../Button';
+import { getConversations } from '../../services/messagesApi';
+import toast from 'react-hot-toast';
 
 export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, favoritesCount, onLogout, location, setLocation }) {
   const navigate = useNavigate();
@@ -10,6 +12,8 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
   const [inputLocation, setInputLocation] = useState(location?.name || 'Orlando, FL');
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [lastMessageCount, setLastMessageCount] = useState(0);
   const abortRef = useRef(null);
 
   const handleUpdateLocation = async () => {
@@ -71,6 +75,41 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
     setInputLocation(name);
     setShowLocationModal(false);
   };
+
+  // Polling messages
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const checkMessages = async () => {
+      try {
+        const conversations = await getConversations();
+        const totalUnread = conversations.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+        const totalMessages = conversations.reduce((sum, conv) => sum + (conv.message_count || 0), 0);
+        
+        setUnreadCount(totalUnread);
+        
+        // Show toast if new messages arrived
+        if (lastMessageCount > 0 && totalMessages > lastMessageCount) {
+          const newCount = totalMessages - lastMessageCount;
+          toast.success(`${newCount} new message${newCount > 1 ? 's' : ''}!`, {
+            icon: '💬',
+            duration: 3000
+          });
+        }
+        
+        setLastMessageCount(totalMessages);
+      } catch (error) {
+        console.error('Failed to check messages:', error);
+      }
+    };
+
+    checkMessages();
+    const interval = setInterval(checkMessages, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, [isAuthenticated, lastMessageCount]);
 
   return (
     <header className="bg-emerald-600 text-white px-6 py-4">
@@ -163,6 +202,21 @@ export function Header({ searchQuery, setSearchQuery, isAuthenticated, user, fav
         </div>
 
         <div className="flex items-center gap-3">
+          {isAuthenticated && (
+            <button 
+              onClick={() => navigate('/messages')}
+              className="relative flex items-center gap-2 hover:bg-emerald-700 h-10 px-4 rounded-lg transition-colors"
+            >
+              <MessageCircle className="size-5" />
+              <span className="hidden lg:inline">Messages</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full size-5 flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Saved Button - only show count if authenticated */}
           <button 
             onClick={() => {

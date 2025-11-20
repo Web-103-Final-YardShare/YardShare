@@ -15,6 +15,8 @@ const favoritesRoutes = require('./routes/favorites')
 const itemsRoutes = require('./routes/items')
 const usersRoutes = require('./routes/users')
 const searchRoutes = require('./routes/search')
+const messagesRoutes = require('./routes/messages')
+
 
 
 const app = express()
@@ -64,6 +66,7 @@ app.use('/api/favorites', favoritesRoutes)
 app.use('/api/items', itemsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/search', searchRoutes)
+app.use('/api/messages', messagesRoutes)
 app.get('/', (req, res) => {
   res.json({ message: 'YardShare API running', user: req.user || null })
 })
